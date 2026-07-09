@@ -45,7 +45,11 @@ async def stream_task_progress(
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield event
+                    # event is a dict from task_manager; serialize to SSE format
+                    if isinstance(event, dict):
+                        yield make_sse_event(event.get("event", "progress"), event.get("data", {}))
+                    else:
+                        yield event
                 except asyncio.TimeoutError:
                     # Send heartbeat
                     yield ": heartbeat\n\n"
