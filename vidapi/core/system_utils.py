@@ -18,48 +18,78 @@ logger = logging.getLogger(__name__)
 def get_downloads_folder() -> Path:
     """Return the user's Downloads folder, cross-platform.
 
-    On Windows, uses SHGetKnownFolderPath with FOLDERID_Downloads
-    to correctly handle localized folder names (e.g. "下载", "Descargas").
-    Falls back to ~/Downloads if the API fails.
+    On Windows, reads the registry first to respect folder redirection
+    (e.g. Downloads moved to D:\\Downloads). Falls back to WinAPI, then ~/Downloads.
     """
     if sys.platform == "win32":
+        # Registry path for Downloads folder
+        downloads_reg = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+        downloads_guid = "{374DE290-123F-4565-9164-39C4925E467B}"
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, downloads_reg, 0, winreg.KEY_READ) as key:
+                # Try by name first
+                try:
+                    path, _ = winreg.QueryValueEx(key, "Personal")
+                    # %USERPROFILE%\Downloads is the default; check if redirected
+                    if "Downloads" in path:
+                        expanded = os.path.expandvars(path)
+                        if os.path.isdir(expanded):
+                            return Path(expanded)
+                except FileNotFoundError:
+                    pass
+                # Try by GUID index (index 0 is Personal, but Downloads is at a different index)
+                # Fallback: enumerate values
+                for i in range(256):
+                    try:
+                        val_name, val_data, _ = winreg.EnumValue(key, i)
+                        if downloads_guid in val_name:
+                            expanded = os.path.expandvars(val_data)
+                            if os.path.isdir(expanded):
+                                return Path(expanded)
+                    except OSError:
+                        break
+        except (FileNotFoundError, OSError):
+            pass
+
+        # Fallback to SHGetKnownFolderPath
         try:
             import ctypes
             from ctypes import wintypes
 
-            # FOLDERID_Downloads = {374DE290-123F-4565-9164-39C4925E467B}
             FOLDERID_Downloads = ctypes.GUID(
                 0x374DE290, 0x123F, 0x4565, 0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B
             )
 
             SHGetKnownFolderPath = ctypes.windll.shell32.SHGetKnownFolderPath
             SHGetKnownFolderPath.argtypes = [
-                ctypes.POINTER(ctypes.GUID),  # rfid
-                wintypes.DWORD,               # dwFlags
-                wintypes.HANDLE,              # hToken
-                ctypes.POINTER(wintypes.LPWSTR)  # ppszPath
+                ctypes.POINTER(ctypes.GUID),
+                wintypes.DWORD,
+                wintypes.HANDLE,
+                ctypes.POINTER(wintypes.LPWSTR),
             ]
             SHGetKnownFolderPath.restype = wintypes.HRESULT
 
-            KF_FLAG_DEFAULT = 0x00000000
+            # KF_FLAG_APP_DATA_REDIRECT = 0x00000004 to respect redirection
+            KF_FLAG_APP_DATA_REDIRECT = 0x00000004
             path_ptr = wintypes.LPWSTR()
             hr = SHGetKnownFolderPath(
                 ctypes.byref(FOLDERID_Downloads),
-                KF_FLAG_DEFAULT,
+                KF_FLAG_APP_DATA_REDIRECT,
                 None,
-                ctypes.byref(path_ptr)
+                ctypes.byref(path_ptr),
             )
-            if hr == 0:  # S_OK
-                path = Path(path_ptr.value)
-                # CoTaskMemFree the returned string
+            if hr == 0:
+                result = Path(path_ptr.value)
                 ctypes.windll.ole32.CoTaskMemFree(path_ptr)
-                return path
+                if result.is_dir():
+                    return result
             else:
                 logger.debug("SHGetKnownFolderPath failed with HRESULT: 0x%08X", hr)
         except Exception as e:
             logger.debug("Failed to get Downloads folder via WinAPI: %s", e)
 
-    # Fallback for non-Windows or if WinAPI fails
+    # Fallback for non-Windows or if all else fails
     return Path.home() / "Downloads"
 
 
