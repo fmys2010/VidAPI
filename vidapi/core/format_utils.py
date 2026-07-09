@@ -1,0 +1,119 @@
+"""yt-dlp format selector and description utilities."""
+
+import re
+from typing import Any
+
+
+# ── Constants ────────────────────────────────────────────────────────
+
+DOWNLOAD_MODE_AV = "完整视频（画面+声音）"
+DOWNLOAD_MODE_VIDEO_ONLY = "仅视频（无声音）"
+DOWNLOAD_MODE_AUDIO_ONLY = "仅音频"
+DOWNLOAD_MODE_OPTIONS = [
+    DOWNLOAD_MODE_AV,
+    DOWNLOAD_MODE_VIDEO_ONLY,
+    DOWNLOAD_MODE_AUDIO_ONLY,
+]
+
+QUALITY_OPTIONS = [
+    "最佳",
+    "2160p / 4K",
+    "1440p / 2K",
+    "1080p",
+    "720p",
+    "480p",
+    "360p",
+]
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+def quality_to_height(quality_label: str) -> int | None:
+    if quality_label == "最佳":
+        return None
+    match = re.search(r"(\d+)p", quality_label)
+    return int(match.group(1)) if match else None
+
+
+def build_format_selector(download_mode: str, quality_label: str) -> str:
+    """
+    Map UI choices to yt-dlp format selectors.
+
+    Notes:
+    - height<=N means "use this resolution or lower", so 1080p will not pick 4K.
+    - Audio-only ignores the quality option.
+    - Video-only prefers streams with no audio.
+    """
+    height = quality_to_height(quality_label)
+
+    if download_mode == DOWNLOAD_MODE_AUDIO_ONLY:
+        return "ba/bestaudio"
+
+    if download_mode == DOWNLOAD_MODE_VIDEO_ONLY:
+        if height:
+            return f"bv*[acodec=none][height<={height}]/bestvideo[height<={height}]/bv*[height<={height}]"
+        return "bv*[acodec=none]/bestvideo/bv*"
+
+    # Default: complete video, merge best video + best audio when needed.
+    if height:
+        return f"bv*[height<={height}]+ba/b[height<={height}]/best[height<={height}]"
+    return "bv*+ba/b"
+
+# ── Describe / introspect yt-dlp info dicts ───────────────────────────
+
+FormatDict = dict[str, Any]
+
+
+def describe_format(format_info: FormatDict) -> str:
+    format_id = format_info.get("format_id") or "?"
+    ext = format_info.get("ext") or "?"
+    note = format_info.get("format_note") or ""
+    resolution = format_info.get("resolution") or ""
+    height = format_info.get("height")
+    fps = format_info.get("fps")
+    tbr = format_info.get("tbr")
+    vcodec = format_info.get("vcodec") or "?"
+    acodec = format_info.get("acodec") or "?"
+
+    if not resolution and height:
+        resolution = f"{height}p"
+    if fps:
+        resolution = (resolution + f"{fps:g}fps").strip()
+
+    bits = [str(format_id), ext]
+    if resolution:
+        bits.append(str(resolution))
+    if note:
+        bits.append(str(note))
+    if tbr:
+        bits.append(f"{tbr:g}k")
+    bits.append(f"v:{vcodec}")
+    bits.append(f"a:{acodec}")
+    return " / ".join(bits)
+
+
+def selected_video_height(info: FormatDict | None) -> int | None:
+    if not isinstance(info, dict):
+        return None
+    formats = info.get("requested_formats") or [info]
+    heights: list[int] = [
+        h for f in formats
+        if isinstance(f, dict) and f.get("vcodec") not in (None, "none")
+        for h in (f.get("height"),) if isinstance(h, int)
+    ]
+    return max(heights) if heights else None
+
+
+def describe_selected_formats(info: FormatDict | None) -> str | None:
+    if not isinstance(info, dict):
+        return None
+
+    if info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        return f"播放列表/合集任务，条目数: {len(entries)}"
+
+    requested_formats = info.get("requested_formats")
+    if requested_formats:
+        return "实际下载格式: " + " + ".join(describe_format(f) for f in requested_formats if isinstance(f, dict))
+
+    return "实际下载格式: " + describe_format(info)

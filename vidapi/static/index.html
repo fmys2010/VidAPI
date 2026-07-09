@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vidapi - 视频下载</title>
+    <style>
+        /* ponytail: single file, no dependencies, modern restrained design */
+        :root {
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --text-muted: #adaeb0;
+            --border-color: #dee2e6;
+            --accent-color: #0d6efd;
+            --success-color: #198754;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --radius: 8px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        header {
+            margin-bottom: 32px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        textarea, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--bg-secondary);
+        }
+
+        textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #0b5ed7;
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background-color: #bb2d3b;
+        }
+
+        .url-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .url-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .url-tag .site {
+            font-weight: 600;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-size: 11px;
+        }
+
+        .url-tag .site-youtube {
+            background: #ff0000;
+            color: white;
+        }
+
+        .url-tag .site-bilibili {
+            background: #00a1d6;
+            color: white;
+        }
+
+        .url-tag .remove {
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .url-tag .remove:hover {
+            color: var(--danger-color);
+        }
+
+        .empty-state {
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .progress-container {
+            margin-top: 16px;
+        }
+
+        .progress-bar-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .progress-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), #6ea8fe);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .log-container {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 12px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .log-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-container::-webkit-scrollbar-track {
+            background: #252526;
+            border-radius: 4px;
+        }
+
+        .log-container::-webkit-scrollbar-thumb {
+            background: #4a4a4a;
+            border-radius: 4px;
+        }
+
+        .log-container::-webkit-scrollbar-thumb:hover {
+            background: #616161;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+        }
+
+        .log-entry.time {
+            color: #858585;
+        }
+
+        .log-entry.info {
+            color: #79c0ff;
+        }
+
+        .log-entry.success {
+            color: #7ee787;
+        }
+
+        .log-entry.warning {
+            color: #ffa657;
+        }
+
+        .log-entry.error {
+            color: #ff7b72;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-downloading {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed, .status-cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .task-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 16px;
+            background: var(--bg-primary);
+            border-radius: var(--radius);
+            margin-top: 16px;
+        }
+
+        .task-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .task-row .label {
+            color: var(--text-secondary);
+        }
+
+        .task-row .value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px 12px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>vidapi</h1>
+            <p class="subtitle">YouTube & BiliBili 视频下载</p>
+        </header>
+
+        <div class="card">
+            <h2 style="font-size: 16px; margin-bottom: 16px;">下载设置</h2>
+            
+            <div class="form-group">
+                <label for="urlInput">视频链接 (支持多个链接粘贴)</label>
+                <textarea 
+                    id="urlInput" 
+                    placeholder="粘贴 YouTube 或 BiliBili 链接，支持多个链接直接连续粘贴&#10;例如: https://youtu.be/abc123https://b23.tv/xyz789"
+                    autofocus
+                ></textarea>
+                <div id="urlPreview" class="url-list"></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="downloadMode">下载模式</label>
+                    <select id="downloadMode">
+                        <option value="完整视频（画面+声音）">完整视频（画面+声音）</option>
+                        <option value="仅视频（无声音）">仅视频（无声音）</option>
+                        <option value="仅音频">仅音频</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="quality">清晰度</label>
+                    <select id="quality">
+                        <option value="最佳">最佳</option>
+                        <option value="2160p / 4K">2160p / 4K</option>
+                        <option value="1440p / 2K">1440p / 2K</option>
+                        <option value="1080p">1080p</option>
+                        <option value="720p">720p</option>
+                        <option value="480p">480p</option>
+                        <option value="360p">360p</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="startBtn" class="btn btn-primary" onclick="startDownload()" disabled>
+                    开始下载
+                </button>
+                <button id="cancelBtn" class="btn btn-danger" onclick="cancelDownload()" style="display: none;">
+                    取消下载
+                </button>
+            </div>
+        </div>
+
+        <div class="card" id="progressCard" style="display: none;">
+            <h2 style="font-size: 16px; margin-bottom: 16px;">下载进度</h2>
+            
+            <div id="alertContainer"></div>
+            
+            <div class="task-info" id="taskInfo" style="display: none;">
+                <div class="task-row">
+                    <span class="label">任务 ID</span>
+                    <span class="value" id="taskId"></span>
+                </div>
+                <div class="task-row">
+                    <span class="label">状态</span>
+                    <span class="value" id="taskStatus"></span>
+                </div>
+                <div class="task-row">
+                    <span class="label">当前文件</span>
+                    <span class="value" id="currentFile">-</span>
+                </div>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar-wrapper">
+                    <span class="progress-label" id="progressLabel">准备中...</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                    </div>
+                    <span class="progress-text" id="progressText">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="font-size: 16px; margin-bottom: 16px;">日志输出</h2>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry time">系统准备就绪</div>
+            </div>
+            <button class="btn" onclick="clearLogs()" style="margin-top: 12px; background: var(--bg-primary); color: var(--text-secondary);">
+                清空日志
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ponytail: single file, no dependencies, vanilla JS
+        // URL patterns for parsing concatenated URLs
+        const URL_PATTERNS = [
+            'youtube.com/watch?v=',
+            'youtu.be/',
+            'youtube-nocookie.com/',
+            'music.youtube.com/',
+            'b23.tv/',
+            'bilibili.com/video/',
+            'bilibili.com/bangumi/',
+            'bilibili.com/live/',
+            'bilibili.com/read/'
+        ];
+
+        // State
+        let currentTaskId = null;
+        let eventSource = null;
+        let parsedUrls = [];
+
+        // DOM elements
+        const urlInput = document.getElementById('urlInput');
+        const urlPreview = document.getElementById('urlPreview');
+        const downloadMode = document.getElementById('downloadMode');
+        const quality = document.getElementById('quality');
+        const startBtn = document.getElementById('startBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const progressCard = document.getElementById('progressCard');
+        const taskInfo = document.getElementById('taskInfo');
+        const taskIdEl = document.getElementById('taskId');
+        const taskStatusEl = document.getElementById('taskStatus');
+        const currentFileEl = document.getElementById('currentFile');
+        const progressLabel = document.getElementById('progressLabel');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const logContainer = document.getElementById('logContainer');
+        const alertContainer = document.getElementById('alertContainer');
+
+        // API base URL
+        const API_BASE = '/api/v1';
+
+        // Initialize
+        urlInput.addEventListener('input', debounce(parseUrls, 300));
+        
+        // Debounce helper
+        function debounce(fn, delay) {
+            let timeout;
+            return function() {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => fn.apply(this, arguments), delay);
+            };
+        }
+
+        // Parse URLs from text (simplified version of extract_concatenated_urls)
+        function parseUrls() {
+            const text = urlInput.value.trim();
+            if (!text) {
+                parsedUrls = [];
+                updateUrlPreview();
+                updateStartButton();
+                return;
+            }
+
+            // Try to split by whitespace first
+            const whitespaceSplit = text.split(/\s+/).filter(u => u.trim());
+            if (whitespaceSplit.length > 1) {
+                parsedUrls = whitespaceSplit.map(normalizeUrl).filter(u => isValidVideoUrl(u));
+                updateUrlPreview();
+                updateStartButton();
+                return;
+            }
+
+            // Try to find known URL patterns in concatenated text
+            parsedUrls = [];
+            let remaining = text;
+            
+            while (remaining) {
+                let found = false;
+                let earliestIndex = Infinity;
+                let earliestPattern = '';
+                
+                for (const pattern of URL_PATTERNS) {
+                    const index = remaining.indexOf(pattern);
+                    if (index !== -1 && index < earliestIndex) {
+                        earliestIndex = index;
+                        earliestPattern = pattern;
+                        found = true;
+                    }
+                }
+
+                if (!found) {
+                    // No more patterns found, try the whole remaining as one URL
+                    const url = normalizeUrl(remaining);
+                    if (isValidVideoUrl(url)) {
+                        parsedUrls.push(url);
+                    }
+                    break;
+                }
+
+                // Find the end of this URL (next space, next known pattern, or end)
+                const patternStart = earliestIndex;
+                const patternEnd = patternStart + earliestPattern.length;
+                
+                // Look for the next pattern start
+                let nextPatternIndex = Infinity;
+                for (const pattern of URL_PATTERNS) {
+                    const index = remaining.indexOf(pattern, patternStart + 1);
+                    if (index !== -1 && index < nextPatternIndex) {
+                        nextPatternIndex = index;
+                    }
+                }
+
+                // Extract URL
+                let urlEnd = nextPatternIndex === Infinity ? remaining.length : nextPatternIndex;
+                let url = remaining.substring(patternStart, urlEnd);
+                
+                // If the URL doesn't start with http, prepend it
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https:' + url;
+                }
+                
+                const normalized = normalizeUrl(url);
+                if (isValidVideoUrl(normalized)) {
+                    parsedUrls.push(normalized);
+                }
+                
+                remaining = remaining.substring(urlEnd);
+            }
+
+            updateUrlPreview();
+            updateStartButton();
+        }
+
+        // Normalize URL
+        function normalizeUrl(url) {
+            if (!url) return '';
+            let u = url.trim();
+            // Remove trailing punctuation
+            u = u.replace(/[.,;!?\s]+$/, '');
+            // Ensure protocol
+            if (!u.startsWith('http://') && !u.startsWith('https://')) {
+                u = 'https://' + u;
+            }
+            return u;
+        }
+
+        // Check if URL is valid video URL
+        function isValidVideoUrl(url) {
+            if (!url) return false;
+            try {
+                const parsed = new URL(url);
+                const host = parsed.hostname.toLowerCase();
+                
+                // YouTube domains
+                if (host.includes('youtube.com') || host.includes('youtu.be') || host.includes('youtube-nocookie.com')) {
+                    return true;
+                }
+                
+                // BiliBili domains
+                if (host.includes('b23.tv') || host.includes('bilibili.com')) {
+                    return true;
+                }
+                
+                return false;
+            } catch {
+                return false;
+            }
+        }
+
+        // Get site name for display
+        function getSiteName(url) {
+            try {
+                const parsed = new URL(url);
+                const host = parsed.hostname.toLowerCase();
+                if (host.includes('youtube.com') || host.includes('youtu.be') || host.includes('youtube-nocookie.com')) {
+                    return 'YouTube';
+                }
+                if (host.includes('b23.tv') || host.includes('bilibili.com')) {
+                    return 'BiliBili';
+                }
+                return '未知';
+            } catch {
+                return '未知';
+            }
+        }
+
+        // Update URL preview display
+        function updateUrlPreview() {
+            urlPreview.innerHTML = '';
+            
+            if (parsedUrls.length === 0) {
+                if (urlInput.value.trim()) {
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-state';
+                    empty.textContent = '未识别到有效的 YouTube 或 BiliBili 链接';
+                    urlPreview.appendChild(empty);
+                }
+                return;
+            }
+
+            parsedUrls.forEach((url, index) => {
+                const tag = document.createElement('div');
+                tag.className = 'url-tag';
+                
+                const siteSpan = document.createElement('span');
+                siteSpan.className = 'site site-' + (getSiteName(url) === 'YouTube' ? 'youtube' : 'bilibili');
+                siteSpan.textContent = getSiteName(url);
+                tag.appendChild(siteSpan);
+                
+                const urlSpan = document.createElement('span');
+                urlSpan.textContent = shortenUrl(url);
+                tag.appendChild(urlSpan);
+                
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'remove';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.onclick = () => removeUrl(index);
+                tag.appendChild(removeBtn);
+                
+                urlPreview.appendChild(tag);
+            });
+        }
+
+        // Shorten URL for display
+        function shortenUrl(url) {
+            try {
+                const parsed = new URL(url);
+                if (parsed.hostname.includes('youtu.be')) {
+                    return parsed.pathname.substring(1, 8) + (parsed.pathname.length > 8 ? '...' : '');
+                }
+                if (parsed.hostname.includes('b23.tv')) {
+                    return parsed.pathname.substring(1, 8) + (parsed.pathname.length > 8 ? '...' : '');
+                }
+                if (parsed.searchParams.has('v')) {
+                    return parsed.searchParams.get('v').substring(0, 8) + '...';
+                }
+                return url.substring(0, 30) + (url.length > 30 ? '...' : '');
+            } catch {
+                return url.substring(0, 30) + (url.length > 30 ? '...' : '');
+            }
+        }
+
+        // Remove URL from list
+        function removeUrl(index) {
+            parsedUrls.splice(index, 1);
+            updateUrlPreview();
+            updateStartButton();
+            // Update textarea to reflect changes
+            urlInput.value = parsedUrls.join(' ');
+        }
+
+        // Update start button state
+        function updateStartButton() {
+            const hasUrls = parsedUrls.length > 0;
+            const isDownloading = startBtn.disabled && progressCard.style.display !== 'none';
+            
+            if (!isDownloading) {
+                startBtn.disabled = !hasUrls;
+            }
+        }
+
+        // Add log entry
+        function addLog(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString('zh-CN')}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Keep only last 200 entries
+            while (logContainer.children.length > 200) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+
+        // Clear logs
+        function clearLogs() {
+            logContainer.innerHTML = '<div class="log-entry time">日志已清空</div>';
+        }
+
+        // Show alert
+        function showAlert(message, type = 'error') {
+            alertContainer.innerHTML = `
+                <div class="alert alert-${type}">
+                    ${message}
+                </div>
+            `;
+        }
+
+        // Clear alert
+        function clearAlert() {
+            alertContainer.innerHTML = '';
+        }
+
+        // Start download
+        async function startDownload() {
+            if (parsedUrls.length === 0) {
+                showAlert('请输入有效的视频链接');
+                return;
+            }
+
+            clearAlert();
+            addLog('开始创建下载任务...', 'info');
+            
+            const request = {
+                urls: parsedUrls,
+                download_mode: downloadMode.value,
+                quality: quality.value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(request)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentTaskId = data.task_id;
+                
+                addLog(`任务创建成功: ${data.task_id}`, 'success');
+                
+                // Show progress card
+                progressCard.style.display = 'block';
+                taskInfo.style.display = 'block';
+                taskIdEl.textContent = data.task_id;
+                
+                // Update button states
+                startBtn.disabled = true;
+                cancelBtn.style.display = 'inline-flex';
+                
+                // Start SSE streaming
+                startSseStream(data.task_id);
+                
+            } catch (error) {
+                addLog(`创建任务失败: ${error.message}`, 'error');
+                showAlert(`创建任务失败: ${error.message}`);
+            }
+        }
+
+        // Start SSE stream
+        function startSseStream(taskId) {
+            // Close existing connection
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            addLog(`连接到任务流: ${taskId}`, 'info');
+            
+            eventSource = new EventSource(`${API_BASE}/tasks/${taskId}/stream`);
+            
+            eventSource.onopen = () => {
+                addLog('SSE 连接已建立', 'success');
+            };
+
+            eventSource.onerror = (error) => {
+                addLog(`SSE 连接错误: ${error}`, 'error');
+                // Try to reconnect after delay
+                setTimeout(() => startSseStream(taskId), 3000);
+            };
+
+            eventSource.addEventListener('state_change', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateTaskState(data);
+                } catch (e) {
+                    addLog(`解析 state_change 事件失败: ${e.message}`, 'warning');
+                }
+            });
+
+            eventSource.addEventListener('progress', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateProgress(data);
+                } catch (e) {
+                    addLog(`解析 progress 事件失败: ${e.message}`, 'warning');
+                }
+            });
+
+            eventSource.addEventListener('log', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.message) {
+                        addLog(data.message, 'info');
+                    }
+                } catch (e) {
+                    addLog(`解析 log 事件失败: ${e.message}`, 'warning');
+                }
+            });
+
+            eventSource.addEventListener('complete', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addLog(`下载完成: ${data.success ? '成功' : '失败'}`, data.success ? 'success' : 'error');
+                    
+                    if (data.success) {
+                        // Reset for new download
+                        setTimeout(() => {
+                            if (eventSource) {
+                                eventSource.close();
+                                eventSource = null;
+                            }
+                            currentTaskId = null;
+                            startBtn.disabled = false;
+                            cancelBtn.style.display = 'none';
+                        }, 2000);
+                    } else {
+                        // Enable retry
+                        startBtn.disabled = false;
+                    }
+                } catch (e) {
+                    addLog(`解析 complete 事件失败: ${e.message}`, 'warning');
+                }
+            });
+
+            eventSource.addEventListener('error', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addLog(`错误: ${data.error_msg || data.message || '未知错误'}`, 'error');
+                    startBtn.disabled = false;
+                } catch (e) {
+                    addLog(`解析 error 事件失败: ${e.message}`, 'warning');
+                }
+            });
+        }
+
+        // Update task state
+        function updateTaskState(data) {
+            const state = data.state || 'pending';
+            const statusMap = {
+                'pending': '等待中',
+                'downloading': '下载中',
+                'completed': '已完成',
+                'failed': '失败',
+                'cancelled': '已取消'
+            };
+            
+            taskStatusEl.innerHTML = `<span class="status-badge status-${state}">${statusMap[state] || state}</span>`;
+            
+            if (state === 'downloading') {
+                progressLabel.textContent = '下载中';
+            } else if (state === 'completed') {
+                progressLabel.textContent = '完成';
+                progressFill.style.width = '100%';
+                progressText.textContent = '100%';
+            } else if (state === 'failed' || state === 'cancelled') {
+                progressLabel.textContent = statusMap[state];
+                startBtn.disabled = false;
+                cancelBtn.style.display = 'none';
+            }
+        }
+
+        // Update progress
+        function updateProgress(data) {
+            const progress = data.progress_pct || 0;
+            progressFill.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
+            
+            if (data.current_file) {
+                currentFileEl.textContent = data.current_file;
+            }
+            
+            if (data.message) {
+                progressLabel.textContent = data.message.substring(0, 20);
+            }
+        }
+
+        // Cancel download
+        async function cancelDownload() {
+            if (!currentTaskId) return;
+            
+            addLog(`取消任务: ${currentTaskId}`, 'warning');
+            
+            try {
+                const response = await fetch(`${API_BASE}/tasks/${currentTaskId}/cancel`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    addLog('取消请求已发送', 'info');
+                } else {
+                    addLog('取消请求失败', 'error');
+                }
+            } catch (error) {
+                addLog(`取消失败: ${error.message}`, 'error');
+            }
+            
+            // Close SSE connection
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            // Reset UI
+            currentTaskId = null;
+            startBtn.disabled = false;
+            cancelBtn.style.display = 'none';
+        }
+
+        // Initialize
+        addLog('vidapi UI 已加载', 'success');
+        updateStartButton();
+    </script>
+</body>
+</html>
