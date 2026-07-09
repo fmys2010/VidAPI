@@ -19,19 +19,27 @@ from tkinter import ttk, scrolledtext, messagebox, filedialog
 class GUIApp:
     """Main GUI application for vidapi."""
 
-    # Color scheme - modern restrained
+    # Color scheme - modern dark theme
     COLORS = {
-        "bg_primary": "#f8f9fa",
-        "bg_secondary": "#ffffff",
-        "bg_card": "#ffffff",
-        "text_primary": "#212529",
-        "text_secondary": "#6c757d",
-        "text_mutd": "#adaeb0",
-        "accent": "#0d6efd",
-        "success": "#198754",
-        "danger": "#dc3545",
-        "warning": "#ffc107",
-        "border": "#dee2e6",
+        "bg_primary": "#0d1117",          # Main background - very dark
+        "bg_secondary": "#161b22",        # Secondary background - panels
+        "bg_card": "#161b22",             # Card background
+        "bg_hover": "#21262d",            # Hover states
+        "text_primary": "#e6edf3",        # Primary text - high contrast
+        "text_secondary": "#8b949e",      # Secondary text - muted
+        "text_muted": "#6e7681",          # Muted text
+        "accent": "#58a6ff",              # Blue accent - bright for dark bg
+        "accent_hover": "#388bfd",
+        "accent_active": "#1f6feb",
+        "success": "#3fb950",
+        "success_hover": "#2ea043",
+        "danger": "#f85149",
+        "danger_hover": "#da3633",
+        "warning": "#d29922",
+        "border": "#30363d",              # Subtle borders
+        "border_focus": "#58a6ff",        # Focus borders
+        "input_bg": "#0d1117",            # Input backgrounds
+        "log_bg": "#0d1117",              # Log background
     }
 
     # Quality options
@@ -79,7 +87,7 @@ class GUIApp:
         self.root.after(100, self.process_log_queue)
 
     def configure_styles(self):
-        """Configure custom ttk styles for modern look."""
+        """Configure custom ttk styles for modern dark theme."""
         style = ttk.Style()
         
         # Use clam theme (most customizable)
@@ -90,7 +98,10 @@ class GUIApp:
         card_bg = self.COLORS["bg_card"]
         accent = self.COLORS["accent"]
         text = self.COLORS["text_primary"]
+        text_secondary = self.COLORS["text_secondary"]
         border = self.COLORS["border"]
+        input_bg = self.COLORS["input_bg"]
+        hover_bg = self.COLORS["bg_hover"]
         
         # Frame style
         style.configure("TFrame", background=bg)
@@ -102,33 +113,52 @@ class GUIApp:
         style.configure("TLabel", background=bg, foreground=text, font=("Segoe UI", 10))
         style.configure("Card.TLabel", background=card_bg, foreground=text, font=("Segoe UI", 10))
         style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), background=bg, foreground=text)
-        style.configure("Subtitle.TLabel", font=("Segoe UI", 10), background=bg, foreground=self.COLORS["text_secondary"])
+        style.configure("Subtitle.TLabel", font=("Segoe UI", 10), background=bg, foreground=text_secondary)
         
         # Buttons
         style.configure("TButton", font=("Segoe UI", 10), bordercolor=border, background=card_bg, foreground=text)
-        style.map("TButton", background=[("active", "#e7f1ff")])
+        style.map("TButton", 
+                  background=[("active", hover_bg), ("pressed", border)],
+                  foreground=[("active", text), ("pressed", text)])
         
         # Primary button
         style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), bordercolor=accent, foreground="white")
         style.map("Primary.TButton", 
-                  background=[("active", "#0b5ed7"), ("pressed", "#0a58ca")],
-                  bordercolor=[("active", "#0b5ed7"), ("pressed", "#0a58ca")])
+                  background=[("active", self.COLORS["accent_hover"]), ("pressed", self.COLORS["accent_active"])],
+                  bordercolor=[("active", self.COLORS["accent_hover"]), ("pressed", self.COLORS["accent_active"])])
         
         # Danger button
         style.configure("Danger.TButton", font=("Segoe UI", 10, "bold"), bordercolor=self.COLORS["danger"], foreground="white")
         style.map("Danger.TButton",
-                  background=[("active", "#bb2d3b"), ("pressed", "#992130")],
-                  bordercolor=[("active", "#bb2d3b"), ("pressed", "#992130")])
+                  background=[("active", self.COLORS["danger_hover"]), ("pressed", self.COLORS["danger"])],
+                  bordercolor=[("active", self.COLORS["danger_hover"]), ("pressed", self.COLORS["danger"])])
         
         # Combobox
-        style.configure("TCombobox", font=("Segoe UI", 10), bordercolor=border)
+        style.configure("TCombobox", font=("Segoe UI", 10), bordercolor=border, fieldbackground=input_bg, background=card_bg, foreground=text)
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", input_bg)],
+                  background=[("readonly", input_bg)],
+                  foreground=[("readonly", text)],
+                  selectbackground=[("readonly", accent)],
+                  selectforeground=[("readonly", "white")])
         
         # Entry
-        style.configure("TEntry", font=("Consolas", 10), bordercolor=border)
+        style.configure("TEntry", font=("Consolas", 10), bordercolor=border, fieldbackground=input_bg, foreground=text, insertcolor=text)
+        style.map("TEntry",
+                  fieldbackground=[("focus", input_bg)],
+                  bordercolor=[("focus", self.COLORS["border_focus"])])
         
         # Progress bar
-        style.configure("TProgressbar", thickness=8, background=border, troughcolor=self.COLORS["bg_primary"])
+        style.configure("TProgressbar", thickness=8, background=accent, troughcolor=self.COLORS["bg_primary"], bordercolor=border)
         style.configure("Horizontal.TProgressbar", troughcolor=self.COLORS["bg_primary"], bordercolor=border)
+        
+        # Notebook (tabs)
+        style.configure("TNotebook", background=bg, bordercolor=border, tabmargins=[2, 5, 2, 0])
+        style.configure("TNotebook.Tab", font=("Segoe UI", 10), padding=[12, 6], background=card_bg, foreground=text_secondary, bordercolor=border)
+        style.map("TNotebook.Tab",
+                  background=[("selected", card_bg), ("active", hover_bg)],
+                  foreground=[("selected", accent), ("active", text)],
+                  bordercolor=[("selected", accent)])
         
         # Root background
         self.root.configure(background=bg)
@@ -175,15 +205,15 @@ class GUIApp:
             height=6,
             width=80,
             font=("Consolas", 10),
-            bg=self.COLORS["bg_primary"],
+            bg=self.COLORS["input_bg"],
             fg=self.COLORS["text_primary"],
             insertbackground=self.COLORS["text_primary"],
-            selectbackground="#0d6efd",
+            selectbackground=self.COLORS["accent"],
             selectforeground="white",
             borderwidth=1,
             relief="solid",
             highlightthickness=1,
-            highlightcolor=self.COLORS["border"],
+            highlightcolor=self.COLORS["border_focus"],
             highlightbackground=self.COLORS["border"],
         )
         self.url_text.pack(fill="x", expand=True)
@@ -295,16 +325,16 @@ class GUIApp:
             wrap=tk.WORD,
             height=10,
             font=("Consolas", 10),
-            bg="#1e1e1e",
-            fg="#d4d4d4",
-            insertbackground="#d4d4d4",
-            selectbackground="#0d6efd",
+            bg=self.COLORS["log_bg"],
+            fg=self.COLORS["text_primary"],
+            insertbackground=self.COLORS["text_primary"],
+            selectbackground=self.COLORS["accent"],
             selectforeground="white",
             state="disabled",
             borderwidth=1,
             relief="solid",
             highlightthickness=1,
-            highlightcolor=self.COLORS["border"],
+            highlightcolor=self.COLORS["border_focus"],
             highlightbackground=self.COLORS["border"],
         )
         self.log_text.pack(fill="both", expand=True, pady=(10, 0))
@@ -400,7 +430,8 @@ class GUIApp:
         
         for i, url in enumerate(urls[:10]):  # Limit to 10 chips
             site = self.get_site_name(url)
-            color = "#ff0000" if site == "YouTube" else "#00a1d6"
+            # Use theme-appropriate colors with good contrast on dark bg
+            color = self.COLORS["danger"] if site == "YouTube" else self.COLORS["accent"]
             
             chip = tk.Frame(self.url_chips_frame, bg=color, padx=8, pady=4, relief="flat", borderwidth=0)
             chip.pack(side="left", padx=(0, 5), pady=5)
@@ -491,13 +522,13 @@ class GUIApp:
         """Update task status."""
         self.status_var.set(state)
         
-        # Update color
+        # Update color - use theme colors
         colors = {
-            "等待中": None,
-            "下载中": "#0d6efd",
-            "已完成": "#198754",
-            "失败": "#dc3545",
-            "已取消": "#dc3545",
+            "等待中": self.COLORS["text_secondary"],
+            "下载中": self.COLORS["accent"],
+            "已完成": self.COLORS["success"],
+            "失败": self.COLORS["danger"],
+            "已取消": self.COLORS["danger"],
         }
         self.status_label.config(foreground=colors.get(state, self.COLORS["text_primary"]))
         
