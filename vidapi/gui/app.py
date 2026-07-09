@@ -545,6 +545,10 @@ class GUIApp:
         if message:
             self.add_log(message, "info")
 
+    def _ui(self, fn, *args):
+        """Schedule a Tkinter call on the main thread."""
+        self.root.after(0, fn, *args)
+
     def start_download(self):
         """Start download task."""
         if not self.parsed_urls:
@@ -592,9 +596,7 @@ class GUIApp:
             if response.status_code != 201 and response.status_code != 200:
                 error = response.json() if response.text else {}
                 self.add_log(f"创建任务失败: {error.get('error', error.get('message', f'HTTP {response.status_code}'))}", "error")
-                self.running = False
-                self.start_btn.config(state="normal")
-                self.cancel_btn.config(state="disabled")
+                self._ui(self._reset_buttons)
                 return
             
             data = response.json()
@@ -602,17 +604,25 @@ class GUIApp:
             self.current_task_id = task_id
             
             self.add_log(f"任务创建成功: {task_id}", "success")
-            self.task_id_var.set(task_id)
-            self.update_status("下载中")
+            self._ui(self._set_task_info, task_id)
+            self._ui(self.update_status, "下载中")
             
             # Start SSE streaming
             self.stream_task_progress(task_id)
             
         except Exception as e:
             self.add_log(f"创建任务时出错: {e}", "error")
-            self.running = False
-            self.start_btn.config(state="normal")
-            self.cancel_btn.config(state="disabled")
+            self._ui(self._reset_buttons)
+
+    def _set_task_info(self, task_id: str):
+        """Thread-safe task ID setter."""
+        self.task_id_var.set(task_id)
+
+    def _reset_buttons(self):
+        """Thread-safe button reset."""
+        self.running = False
+        self.start_btn.config(state="normal")
+        self.cancel_btn.config(state="disabled")
 
     def stream_task_progress(self, task_id: str):
         """Stream task progress via SSE."""
@@ -622,7 +632,9 @@ class GUIApp:
         url = f"http://localhost:8000/api/v1/tasks/{task_id}/stream"
         
         try:
-            with requests.get(url, stream=True, timeout=30) as response:
+            # Long timeout for SSE — download can take hours.
+            # Server sends heartbeat every 30s, so use a generous timeout.
+            with requests.get(url, stream=True, timeout=300) as response:
                 for line in response.iter_lines():
                     if not line:
                         continue
@@ -640,12 +652,10 @@ class GUIApp:
         except Exception as e:
             self.add_log(f"流连接错误: {e}", "error")
         finally:
-            self.running = False
-            self.start_btn.config(state="normal")
-            self.cancel_btn.config(state="disabled")
+            self._ui(self._reset_buttons)
 
-    def handle_sse_event(self, event: str, data: dict):
-        """Handle SSE event."""
+    def _handle_sse_event_safe(self, event: str, data: dict):
+        """Thread-safe SSE event handler (called via root.after)."""
         if event == "state_change":
             state = data.get("state", "")
             state_map = {
@@ -683,6 +693,10 @@ class GUIApp:
         elif event == "error":
             error_msg = data.get("error_msg", data.get("message", "未知错误"))
             self.add_log(f"错误: {error_msg}", "error")
+
+    def handle_sse_event(self, event: str, data: dict):
+        """Dispatch SSE event to main thread."""
+        self._ui(self._handle_sse_event_safe, event, data)
 
     def cancel_download(self):
         """Cancel current download."""
