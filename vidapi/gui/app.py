@@ -63,8 +63,8 @@ class GUIApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("vidapi - 视频下载")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        self.root.geometry("1000x850")
+        self.root.minsize(900, 750)
         
         # Set window icon (placeholder)
         try:
