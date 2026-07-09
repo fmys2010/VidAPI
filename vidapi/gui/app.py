@@ -422,32 +422,35 @@ class GUIApp:
             if widget != self.urls_label:
                 widget.destroy()
         
+        # Group URLs by site
+        from collections import Counter
+        site_counts = Counter(self.get_site_name(url) for url in urls)
+        self.parsed_urls = urls
+        
         # Update label
         self.urls_label.config(text=f"解析到的链接: {len(urls)} 个")
         
-        # Create chips
-        self.parsed_urls = urls
+        if not site_counts:
+            self.start_btn.config(state="disabled")
+            return
         
-        for i, url in enumerate(urls[:10]):  # Limit to 10 chips
-            site = self.get_site_name(url)
-            # Use theme-appropriate colors with good contrast on dark bg
+        # Create one chip per site with aggregated count
+        for site, count in site_counts.items():
             color = self.COLORS["danger"] if site == "YouTube" else self.COLORS["accent"]
             
-            chip = tk.Frame(self.url_chips_frame, bg=color, padx=8, pady=4, relief="flat", borderwidth=0)
+            chip = tk.Frame(self.url_chips_frame, bg=color, padx=12, pady=4, relief="flat", borderwidth=0)
             chip.pack(side="left", padx=(0, 5), pady=5)
             
-            site_label = tk.Label(chip, text=site, bg=color, fg="white", font=("Segoe UI", 8, "bold"))
-            site_label.pack(side="left")
-            
-            url_label = tk.Label(chip, text=self.shorten_url(url), bg=color, fg="white", font=("Segoe UI", 8))
-            url_label.pack(side="left", padx=(4, 0))
-            
-            remove_btn = tk.Label(chip, text="×", bg=color, fg="white", font=("Segoe UI", 8), cursor="hand2")
-            remove_btn.pack(side="left", padx=(4, 0))
-            remove_btn.bind("<Button-1>", lambda e, idx=i: self.remove_url(idx))
+            label = tk.Label(
+                chip,
+                text=f"{site} {count}",
+                bg=color, fg="white",
+                font=("Segoe UI", 9, "bold"),
+            )
+            label.pack(side="left")
         
         # Update start button
-        self.start_btn.config(state="normal" if urls else "disabled")
+        self.start_btn.config(state="normal")
 
     def shorten_url(self, url: str, max_len: int = 20) -> str:
         """Shorten URL for display."""
