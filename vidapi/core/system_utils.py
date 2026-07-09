@@ -6,6 +6,7 @@ No project imports — only stdlib + imageio_ffmpeg.
 from __future__ import annotations
 
 import logging
+import os
 import urllib.request
 from pathlib import Path
 import sys
