@@ -182,11 +182,23 @@ CREATE TABLE IF NOT EXISTS config (
 
 ---
 
+## Platform Paths
+
+| OS | Config Dir | Downloads Folder |
+|----|-----------|-----------------|
+| Linux | `~/.config/vidapi/` | `~/Downloads` |
+| macOS | `~/Library/Application Support/vidapi/` | `~/Downloads` |
+| Windows | `%LOCALAPPDATA%\vidapi\` | `%USERPROFILE%\Downloads` |
+
+**Config file** is always `config.json` inside the platform-specific config dir. The `download_dir` config field overrides the default downloads folder.
+
+---
+
 ## Windows-Specific Functions
 
 | Function | Issue | Resolution |
 |----------|-------|------------|
-| `get_downloads_folder()` | Uses WinAPI `SHGetKnownFolderPath` | Configurable `download_dir` with fallback to `~/Downloads` |
+| `get_downloads_folder()` | Uses WinAPI `SHGetKnownFolderPath` | Configurable `download_dir` with fallback to platform default (`~/Downloads` on Linux/macOS, `%USERPROFILE%\Downloads` on Windows) |
 | `detect_system_proxy()` | Reads Windows registry via `urllib` | Works if env vars set; document limitation |
 
 ---

@@ -23,6 +23,7 @@ from .cookie_utils import (
 )
 from .system_utils import (
     get_downloads_folder,
+    get_platform_config_dir,
     detect_system_proxy,
     get_ffmpeg_location,
     format_bytes,
@@ -58,6 +59,7 @@ __all__ = [
     "BILIBILI_COOKIE_CANDIDATES",
     # system_utils
     "get_downloads_folder",
+    "get_platform_config_dir",
     "detect_system_proxy",
     "get_ffmpeg_location",
     "format_bytes",

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -11,7 +14,9 @@ from vidapi.core.system_utils import (
     detect_system_proxy,
     format_bytes,
     format_eta,
+    get_downloads_folder,
     get_ffmpeg_location,
+    get_platform_config_dir,
 )
 
 
@@ -171,3 +176,73 @@ class TestGetFfmpegLocation:
         assert len(result) == 2
         assert result[0] is None or isinstance(result[0], str)
         assert result[1] is None or isinstance(result[1], str)
+
+
+class TestGetDownloadsFolder:
+    def test_linux_platform(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        result = get_downloads_folder()
+        assert result == Path.home() / "Downloads"
+
+    def test_darwin_platform(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = get_downloads_folder()
+        assert result == Path.home() / "Downloads"
+
+    def test_unknown_platform_fallback(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "freebsd")
+        result = get_downloads_folder()
+        assert result == Path.home() / "Downloads"
+
+    def test_returns_path_object(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        result = get_downloads_folder()
+        assert isinstance(result, Path)
+
+
+class TestGetPlatformConfigDir:
+    def test_windows_default_app(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\testuser")
+        result = get_platform_config_dir()
+        assert result == Path("C:\\Users\\testuser") / "vidapi"
+
+    def test_windows_custom_app_name(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("LOCALAPPDATA", "C:\\Users\\testuser")
+        result = get_platform_config_dir("myapp")
+        assert result == Path("C:\\Users\\testuser") / "myapp"
+
+    def test_windows_no_localappdata_fallback(self):
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(os.environ, clear=True),
+            patch.object(Path, "home", return_value=Path("C:/Users/testuser")),
+        ):
+            result = get_platform_config_dir()
+        assert result == Path("C:/Users/testuser") / "AppData" / "Local" / "vidapi"
+
+    def test_macos_default_app(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = get_platform_config_dir()
+        assert result == Path.home() / "Library" / "Application Support" / "vidapi"
+
+    def test_macos_custom_app_name(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        result = get_platform_config_dir("myapp")
+        assert result == Path.home() / "Library" / "Application Support" / "myapp"
+
+    def test_linux_default_app(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        result = get_platform_config_dir()
+        assert result == Path.home() / ".config" / "vidapi"
+
+    def test_linux_custom_app_name(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        result = get_platform_config_dir("myapp")
+        assert result == Path.home() / ".config" / "myapp"
+
+    def test_returns_path_object(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        result = get_platform_config_dir()
+        assert isinstance(result, Path)

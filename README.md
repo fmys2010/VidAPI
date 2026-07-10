@@ -173,7 +173,13 @@ pending → downloading → completed
 
 ## Configuration
 
-Config file: `~/.config/vidapi/config.json`
+Config file varies by OS:
+
+| OS | Path |
+|----|------|
+| Linux | `~/.config/vidapi/config.json` |
+| macOS | `~/Library/Application Support/vidapi/config.json` |
+| Windows | `%LOCALAPPDATA%\vidapi\config.json` |
 
 ```json
 {

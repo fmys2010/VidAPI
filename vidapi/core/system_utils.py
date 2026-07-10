@@ -94,6 +94,27 @@ def get_downloads_folder() -> Path:
     return Path.home() / "Downloads"
 
 
+def get_platform_config_dir(app_name: str = "vidapi") -> Path:
+    """Return the platform-appropriate config directory for *app_name*.
+
+    Follows platform conventions:
+
+    * **Windows** – ``%LOCALAPPDATA%/{app_name}``
+    * **macOS** – ``~/Library/Application Support/{app_name}``
+    * **Linux / XDG** – ``~/.config/{app_name}``
+
+    Does NOT create the directory; the caller decides.
+    """
+    if sys.platform == "win32":
+        localappdata = os.environ.get("LOCALAPPDATA", "")
+        if localappdata:
+            return Path(localappdata) / app_name
+        return Path.home() / "AppData" / "Local" / app_name
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / app_name
+    return Path.home() / ".config" / app_name
+
+
 def _validate_proxy_url(proxy: str) -> str | None:
     """Validate proxy URL to prevent SSRF.
 

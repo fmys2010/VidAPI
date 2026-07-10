@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from vidapi.core.system_utils import get_platform_config_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,11 +31,7 @@ class Config:
 
     def __init__(self, config_path: Path | None = None) -> None:
         if config_path is None:
-            # Use platform-appropriate config directory
-            if Path.home().joinpath(".config").exists():
-                config_dir = Path.home() / ".config" / "vidapi"
-            else:
-                config_dir = Path.home() / "AppData" / "Local" / "vidapi"
+            config_dir = get_platform_config_dir("vidapi")
             config_dir.mkdir(parents=True, exist_ok=True)
             config_path = config_dir / "config.json"
 

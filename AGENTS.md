@@ -48,7 +48,7 @@ vidapi/
 - **Async boundary**: `ThreadPoolExecutor(max_workers=config.concurrency)` for sync yt-dlp; callbacks via `asyncio.Queue` + `call_soon_threadsafe`
 - **State machine**: `pending → downloading → completed/failed/cancelled` (SPEC.md)
 - **Chinese labels** in enums (`DownloadMode.AV = "完整视频（画面+声音）"`)
-- **Config path**: `~/.config/vidapi/config.json` (Linux) / `%LOCALAPPDATA%/vidapi` (Windows)
+- **Config path**: Linux `~/.config/vidapi/config.json` · macOS `~/Library/Application Support/vidapi/config.json` · Windows `%LOCALAPPDATA%\vidapi\config.json`
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - No browser cookie extraction (headless server)

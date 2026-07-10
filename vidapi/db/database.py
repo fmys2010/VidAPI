@@ -8,6 +8,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from vidapi.core.system_utils import get_platform_config_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,10 +18,7 @@ class Database:
 
     def __init__(self, db_path: Path | None = None) -> None:
         if db_path is None:
-            if Path.home().joinpath(".config").exists():
-                config_dir = Path.home() / ".config" / "vidapi"
-            else:
-                config_dir = Path.home() / "AppData" / "Local" / "vidapi"
+            config_dir = get_platform_config_dir("vidapi")
             config_dir.mkdir(parents=True, exist_ok=True)
             db_path = config_dir / "tasks.sqlite3"
 
