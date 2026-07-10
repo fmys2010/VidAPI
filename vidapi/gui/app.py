@@ -17,7 +17,7 @@ from tkinter import ttk, scrolledtext, messagebox
 class GUIApp:
     """Main GUI application for vidapi."""
 
-    # Color scheme - modern dark theme
+    # Color scheme - modern dark theme (GitHub-inspired)
     COLORS = {
         "bg_primary": "#0d1117",          # Main background - very dark
         "bg_secondary": "#161b22",        # Secondary background - panels
@@ -38,6 +38,11 @@ class GUIApp:
         "border_focus": "#58a6ff",        # Focus borders
         "input_bg": "#0d1117",            # Input backgrounds
         "log_bg": "#0d1117",              # Log background
+        # Modern accent variants
+        "accent_subtle": "#1f3a5f",       # Subtle accent background
+        "success_subtle": "#113826",      # Subtle success background
+        "danger_subtle": "#441111",       # Subtle danger background
+        "warning_subtle": "#3d330c",      # Subtle warning background
     }
 
     # Quality options
@@ -100,12 +105,16 @@ class GUIApp:
         border = self.COLORS["border"]
         input_bg = self.COLORS["input_bg"]
         hover_bg = self.COLORS["bg_hover"]
+        accent_subtle = self.COLORS["accent_subtle"]
+        success_subtle = self.COLORS["success_subtle"]
+        danger_subtle = self.COLORS["danger_subtle"]
+        warning_subtle = self.COLORS["warning_subtle"]
         
-        # Frame style
+        # Frame style - flat, no borders
         style.configure("TFrame", background=bg)
         
-        # Card frame
-        style.configure("Card.TFrame", background=card_bg, bordercolor=border)
+        # Card frame - flat with subtle background, no border
+        style.configure("Card.TFrame", background=card_bg)
         
         # Labels
         style.configure("TLabel", background=bg, foreground=text, font=("Segoe UI", 10))
@@ -113,50 +122,101 @@ class GUIApp:
         style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), background=bg, foreground=text)
         style.configure("Subtitle.TLabel", font=("Segoe UI", 10), background=bg, foreground=text_secondary)
         
-        # Buttons
-        style.configure("TButton", font=("Segoe UI", 10), bordercolor=border, background=card_bg, foreground=text)
+        # Buttons - flat design
+        style.configure("TButton", 
+                       font=("Segoe UI", 10), 
+                       background=card_bg, 
+                       foreground=text,
+                       borderwidth=0,
+                       focusthickness=0,
+                       focuscolor=accent,
+                       padding=(12, 8))
         style.map("TButton", 
                   background=[("active", hover_bg), ("pressed", border)],
-                  foreground=[("active", text), ("pressed", text)])
+                  foreground=[("active", text), ("pressed", text)],
+                  relief=[("pressed", "flat"), ("!pressed", "flat")])
         
-        # Primary button
-        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), bordercolor=accent, foreground="white")
+        # Primary button - accent background
+        style.configure("Primary.TButton", 
+                       font=("Segoe UI", 10, "bold"), 
+                       background=accent, 
+                       foreground="white",
+                       borderwidth=0,
+                       focusthickness=0,
+                       focuscolor=accent,
+                       padding=(16, 8))
         style.map("Primary.TButton", 
                   background=[("active", self.COLORS["accent_hover"]), ("pressed", self.COLORS["accent_active"])],
-                  bordercolor=[("active", self.COLORS["accent_hover"]), ("pressed", self.COLORS["accent_active"])])
+                  foreground=[("active", "white"), ("pressed", "white")],
+                  relief=[("pressed", "flat"), ("!pressed", "flat")])
         
         # Danger button
-        style.configure("Danger.TButton", font=("Segoe UI", 10, "bold"), bordercolor=self.COLORS["danger"], foreground="white")
+        style.configure("Danger.TButton", 
+                       font=("Segoe UI", 10, "bold"), 
+                       background=danger_subtle, 
+                       foreground=self.COLORS["danger"],
+                       borderwidth=0,
+                       focusthickness=0,
+                       focuscolor=self.COLORS["danger"],
+                       padding=(16, 8))
         style.map("Danger.TButton",
                   background=[("active", self.COLORS["danger_hover"]), ("pressed", self.COLORS["danger"])],
-                  bordercolor=[("active", self.COLORS["danger_hover"]), ("pressed", self.COLORS["danger"])])
+                  foreground=[("active", "white"), ("pressed", "white")],
+                  relief=[("pressed", "flat"), ("!pressed", "flat")])
         
-        # Combobox
-        style.configure("TCombobox", font=("Segoe UI", 10), bordercolor=border, fieldbackground=input_bg, background=card_bg, foreground=text)
+        # Secondary button (for clear, etc.) - subtle
+        style.configure("Secondary.TButton",
+                       font=("Segoe UI", 10),
+                       background="transparent",
+                       foreground=text_secondary,
+                       borderwidth=1,
+                       bordercolor=border,
+                       padding=(12, 8))
+        style.map("Secondary.TButton",
+                  background=[("active", hover_bg)],
+                  foreground=[("active", text)],
+                  bordercolor=[("active", accent)])
+        
+        # Combobox - flat
+        style.configure("TCombobox", 
+                       font=("Segoe UI", 10), 
+                       fieldbackground=input_bg, 
+                       background=card_bg, 
+                       foreground=text,
+                       borderwidth=0,
+                       arrowsize=12,
+                       padding=(8, 6))
         style.map("TCombobox",
-                  fieldbackground=[("readonly", input_bg)],
-                  background=[("readonly", input_bg)],
+                  fieldbackground=[("readonly", input_bg), ("focus", input_bg)],
+                  background=[("readonly", card_bg)],
                   foreground=[("readonly", text)],
                   selectbackground=[("readonly", accent)],
-                  selectforeground=[("readonly", "white")])
+                  selectforeground=[("readonly", "white")],
+                  bordercolor=[("focus", accent), ("!focus", "transparent")])
         
-        # Entry
-        style.configure("TEntry", font=("Consolas", 10), bordercolor=border, fieldbackground=input_bg, foreground=text, insertcolor=text)
+        # Entry - flat
+        style.configure("TEntry", 
+                       font=("Consolas", 10), 
+                       fieldbackground=input_bg, 
+                       foreground=text, 
+                       insertcolor=text,
+                       borderwidth=0,
+                       padding=(8, 6))
         style.map("TEntry",
                   fieldbackground=[("focus", input_bg)],
-                  bordercolor=[("focus", self.COLORS["border_focus"])])
+                  bordercolor=[("focus", accent), ("!focus", "transparent")])
         
-        # Progress bar
-        style.configure("TProgressbar", thickness=8, background=accent, troughcolor=self.COLORS["bg_primary"], bordercolor=border)
-        style.configure("Horizontal.TProgressbar", troughcolor=self.COLORS["bg_primary"], bordercolor=border)
+        # Progress bar - modern thin
+        style.configure("TProgressbar", thickness=6, background=accent, troughcolor=bg, borderwidth=0)
+        style.configure("Horizontal.TProgressbar", troughcolor=bg, borderwidth=0)
         
-        # Notebook (tabs)
-        style.configure("TNotebook", background=bg, bordercolor=border, tabmargins=[2, 5, 2, 0])
-        style.configure("TNotebook.Tab", font=("Segoe UI", 10), padding=[12, 6], background=card_bg, foreground=text_secondary, bordercolor=border)
+        # Notebook (tabs) - clean
+        style.configure("TNotebook", background=bg, borderwidth=0, tabmargins=[2, 4, 2, 0])
+        style.configure("TNotebook.Tab", font=("Segoe UI", 10), padding=[16, 6], background="transparent", foreground=text_secondary, borderwidth=0)
         style.map("TNotebook.Tab",
                   background=[("selected", card_bg), ("active", hover_bg)],
                   foreground=[("selected", accent), ("active", text)],
-                  bordercolor=[("selected", accent)])
+                  borderwidth=[("selected", 0)])
         
         # Root background
         self.root.configure(background=bg)
@@ -218,7 +278,7 @@ class GUIApp:
         title = ttk.Label(card, text="视频链接", style="Card.TLabel", font=("Segoe UI", 12, "bold"))
         title.pack(anchor="w", pady=(0, 10))
         
-        # URL input
+        # URL input - modern flat design, no border
         self.url_text = scrolledtext.ScrolledText(
             card, 
             wrap=tk.WORD,
@@ -230,11 +290,10 @@ class GUIApp:
             insertbackground=self.COLORS["text_primary"],
             selectbackground=self.COLORS["accent"],
             selectforeground="white",
-            borderwidth=1,
-            relief="solid",
-            highlightthickness=1,
-            highlightcolor=self.COLORS["border_focus"],
-            highlightbackground=self.COLORS["border"],
+            borderwidth=0,
+            highlightthickness=0,
+            padx=12,
+            pady=10,
         )
         self.url_text.pack(fill="x", expand=True)
         self.url_text.insert("1.0", "粘贴 YouTube 或 BiliBili 链接，支持多个链接\n例如: https://youtu.be/abc123\n       https://b23.tv/xyz789")
@@ -284,7 +343,7 @@ class GUIApp:
         self.cancel_btn.pack(side="left", padx=5)
         
         # Clear button
-        clear_btn = ttk.Button(btn_frame, text="清空", command=self.clear_all)
+        clear_btn = ttk.Button(btn_frame, text="清空", style="Secondary.TButton", command=self.clear_all)
         clear_btn.pack(side="right", padx=5)
 
     def create_progress_section(self, parent):
@@ -339,7 +398,7 @@ class GUIApp:
         clear_log_btn = ttk.Button(top_frame, text="清空日志", command=self.clear_logs)
         clear_log_btn.pack(side="right", padx=5)
         
-        # Log text area
+        # Log text area - modern flat design, no border
         self.log_text = scrolledtext.ScrolledText(
             card,
             wrap=tk.WORD,
@@ -351,11 +410,10 @@ class GUIApp:
             selectbackground=self.COLORS["accent"],
             selectforeground="white",
             state="disabled",
-            borderwidth=1,
-            relief="solid",
-            highlightthickness=1,
-            highlightcolor=self.COLORS["border_focus"],
-            highlightbackground=self.COLORS["border"],
+            borderwidth=0,
+            highlightthickness=0,
+            padx=12,
+            pady=10,
         )
         self.log_text.pack(fill="both", expand=True, pady=(10, 0))
         
@@ -454,20 +512,33 @@ class GUIApp:
             self.start_btn.config(state="disabled")
             return
         
-        # Create one chip per site with aggregated count
+        # Create modern chip per site with aggregated count
         for site, count in site_counts.items():
             color = self.COLORS["danger"] if site == "YouTube" else self.COLORS["accent"]
             
-            chip = tk.Frame(self.url_chips_frame, bg=color, padx=12, pady=4, relief="flat", borderwidth=0)
-            chip.pack(side="left", padx=(0, 5), pady=5)
+            # Modern chip - flat with subtle border radius simulation
+            chip = tk.Frame(self.url_chips_frame, bg=self.COLORS["bg_card"], padx=2, pady=2)
+            chip.pack(side="left", padx=(0, 8), pady=5)
+            
+            inner = tk.Frame(chip, bg=color, padx=14, pady=6)
+            inner.pack()
             
             label = tk.Label(
-                chip,
+                inner,
                 text=f"{site} {count}",
                 bg=color, fg="white",
                 font=("Segoe UI", 9, "bold"),
+                cursor="hand2"
             )
             label.pack(side="left")
+            
+            # Hover effect
+            def on_enter(e, c=color):
+                e.widget.config(bg=c + "CC" if len(c) == 7 else c)
+            def on_leave(e, c=color):
+                e.widget.config(bg=c)
+            label.bind("<Enter>", on_enter)
+            label.bind("<Leave>", on_leave)
         
         # Update start button
         self.start_btn.config(state="normal")
