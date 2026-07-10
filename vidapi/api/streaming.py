@@ -56,11 +56,8 @@ async def stream_task_progress(
                 except Exception:
                     break
         finally:
-            # Cleanup - remove empty queue
-            if task_id in task_manager._progress_queues:
-                q = task_manager._progress_queues[task_id]
-                if q.empty():
-                    del task_manager._progress_queues[task_id]
+            # Cleanup - remove queue on client disconnect
+            task_manager._progress_queues.pop(task_id, None)
 
     return StreamingResponse(
         event_generator(),

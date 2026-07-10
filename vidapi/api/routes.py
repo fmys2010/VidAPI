@@ -9,8 +9,6 @@ from vidapi.models import (
     TaskListResponse,
     TaskStatus,
     Site,
-    DownloadMode,
-    Quality,
 )
 from vidapi.task_manager import TaskManager
 
@@ -71,7 +69,8 @@ async def list_tasks(
 ):
     """List tasks with optional filters."""
     tasks = await task_manager.list_tasks(state=state, site=site.value if site else None, limit=limit, offset=offset)
-    return TaskListResponse(tasks=[TaskResponse(**t) for t in tasks], total=len(tasks))
+    total = await task_manager.count_tasks(state=state, site=site.value if site else None)
+    return TaskListResponse(tasks=[TaskResponse(**t) for t in tasks], total=total)
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

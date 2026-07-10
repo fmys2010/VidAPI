@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import pytest
 
 from vidapi.db.database import Database
@@ -237,12 +236,13 @@ class TestRowToTaskEdgeCases:
         assert result["urls"] == []
 
     async def test_corrupt_json_urls(self, database: Database):
-        """Corrupt JSON in urls column should crash _row_to_task."""
+        """Corrupt JSON in urls column should be handled gracefully."""
         await database._conn.execute(
             "INSERT INTO tasks (task_id, urls, state) VALUES (?, ?, ?)",
             ("corrupt", "{not json}", "pending"),
         )
         await database._conn.commit()
-        # This should raise json.JSONDecodeError
-        with pytest.raises(json.JSONDecodeError):
-            await database.get_task("corrupt")
+        # Should not raise, should return task with empty urls list
+        result = await database.get_task("corrupt")
+        assert result is not None
+        assert result["urls"] == []

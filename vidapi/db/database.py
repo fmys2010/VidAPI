@@ -159,6 +159,29 @@ class Database:
         rows = await cursor.fetchall()
         return [self._row_to_task(row) for row in rows]
 
+    async def count_tasks(
+        self,
+        state: str | None = None,
+        site: str | None = None,
+    ) -> int:
+        """Count tasks with optional filters."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
+
+        query = "SELECT COUNT(*) FROM tasks WHERE 1=1"
+        params: list[Any] = []
+
+        if state:
+            query += " AND state = ?"
+            params.append(state)
+        if site:
+            query += " AND download_mode LIKE ?"
+            params.append(f"%{site}%")
+
+        cursor = await self._conn.execute(query, params)
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task."""
         if not self._conn:
@@ -254,5 +277,9 @@ class Database:
         """Convert database row to task dict."""
         import json
         task = dict(row)
-        task["urls"] = json.loads(task["urls"]) if task["urls"] else []
+        try:
+            task["urls"] = json.loads(task["urls"]) if task["urls"] else []
+        except json.JSONDecodeError:
+            logger.warning("Corrupt JSON in urls column for task %s, returning empty list", task.get("task_id"))
+            task["urls"] = []
         return task

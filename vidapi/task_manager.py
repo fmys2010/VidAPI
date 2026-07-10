@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from vidapi.core import (
     DownloadSession,
-    CookieSession,
-    get_ffmpeg_location,
     get_downloads_folder,
     detect_system_proxy,
     build_format_selector,
     classify_site,
     verify_bilibili_cookie_jar,
 )
-from vidapi.core.config import get_config, Config
+from vidapi.core.config import get_config
 from vidapi.db import Database
 
 logger = logging.getLogger(__name__)
@@ -39,7 +36,8 @@ class TaskManager:
 
         # In-memory progress queues for SSE streaming
         self._progress_queues: dict[str, asyncio.Queue] = {}
-        self._task_locks: dict[str, asyncio.Lock] = {}
+        # Active download sessions for cancellation support
+        self._download_sessions: dict[str, DownloadSession] = {}
 
         # Background task for queue cleanup
         self._cleanup_task: asyncio.Task | None = None
@@ -56,6 +54,10 @@ class TaskManager:
 
     async def stop(self) -> None:
         """Shutdown gracefully."""
+        # Cancel all running downloads
+        for session in self._download_sessions.values():
+            session.cancel()
+        
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:
@@ -64,6 +66,7 @@ class TaskManager:
                 pass
 
         self.executor.shutdown(wait=True)
+        self._download_sessions.clear()
 
     async def _cleanup_queues(self) -> None:
         """Periodically clean up empty progress queues."""
@@ -71,7 +74,7 @@ class TaskManager:
             await asyncio.sleep(60)
             to_remove = [
                 task_id for task_id, q in self._progress_queues.items()
-                if q.empty() and task_id not in self._task_locks
+                if q.empty() and task_id not in self._download_sessions
             ]
             for task_id in to_remove:
                 del self._progress_queues[task_id]
@@ -135,6 +138,12 @@ class TaskManager:
         """List tasks with optional filters."""
         return await self.db.list_tasks(state=state, site=site, limit=limit, offset=offset)
 
+    async def count_tasks(
+        self, state: str | None = None, site: str | None = None
+    ) -> int:
+        """Count tasks with optional filters."""
+        return await self.db.count_tasks(state=state, site=site)
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task."""
         await self.cancel_task(task_id)
@@ -148,6 +157,11 @@ class TaskManager:
 
         if task["state"] not in ("pending", "downloading"):
             return False
+
+        # Cancel the download session if it's running
+        session = self._download_sessions.get(task_id)
+        if session:
+            session.cancel()
 
         await self.db.update_task_state(task_id, "cancelled", "Cancelled by user")
         queue = self._get_queue(task_id)
@@ -250,7 +264,7 @@ class TaskManager:
 
         # Cleanup
         self._progress_queues.pop(task_id, None)
-        self._task_locks.pop(task_id, None)
+        self._download_sessions.pop(task_id, None)
 
     # --- Download execution ---
 
@@ -299,9 +313,8 @@ class TaskManager:
             log_callback=make_log_callback,
         )
 
-        # Inject cookie header into session if provided
-        if cookie_header:
-            session.cookie_header = cookie_header
+        # Store session for cancellation support
+        self._download_sessions[task_id] = session
 
         # Run in executor
         try:
@@ -309,9 +322,16 @@ class TaskManager:
             await self.complete_task(task_id, success > 0, failed, skipped)
         except asyncio.CancelledError:
             await self.state_change(task_id, "cancelled", "Task cancelled")
+            self._cleanup_download(task_id)
         except Exception as e:
             logger.exception("Download task %s failed", task_id)
             await self.state_change(task_id, "failed", str(e))
+            self._cleanup_download(task_id)
+
+    def _cleanup_download(self, task_id: str) -> None:
+        """Clean up resources for a download task."""
+        self._download_sessions.pop(task_id, None)
+        self._progress_queues.pop(task_id, None)
 
     async def get_progress_stream(self, task_id: str) -> asyncio.Queue:
         """Get progress queue for SSE streaming."""

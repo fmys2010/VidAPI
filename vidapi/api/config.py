@@ -1,6 +1,6 @@
 """Configuration endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from vidapi.models import ConfigResponse, ConfigUpdate
 from vidapi.task_manager import TaskManager
@@ -49,8 +49,8 @@ async def update_config(
         config.download_mode = update.download_mode
     if update.concurrency is not None:
         config.concurrency = update.concurrency
-        # Recreate executor with new concurrency
-        task_manager.executor.shutdown(wait=True)
+        # Recreate executor with new concurrency - don't wait for running tasks
+        task_manager.executor.shutdown(wait=False, cancel_futures=True)
         from concurrent.futures import ThreadPoolExecutor
         task_manager.executor = ThreadPoolExecutor(max_workers=update.concurrency)
     if update.auto_merge is not None:

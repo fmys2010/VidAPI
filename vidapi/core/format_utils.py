@@ -54,6 +54,13 @@ def build_format_selector(download_mode: str, quality_label: str) -> str:
             return f"bv*[acodec=none][height<={height}]/bestvideo[height<={height}]/bv*[height<={height}]"
         return "bv*[acodec=none]/bestvideo/bv*"
 
+    if download_mode != DOWNLOAD_MODE_AV:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Unknown download_mode: %r, falling back to %r",
+            download_mode, DOWNLOAD_MODE_AV
+        )
+
     # Default: complete video, merge best video + best audio when needed.
     if height:
         return f"bv*[height<={height}]+ba/b[height<={height}]/best[height<={height}]"

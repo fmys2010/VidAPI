@@ -91,6 +91,8 @@ class DownloadSession:
     bilibili_cookie_display : str | None
     progress_callback : ProgressCallback
     log_callback : LogCallback
+    cookie_header : str | None
+        Raw Cookie header for BiliBili (used when bilibili_cookie_spec is not available)
     """
 
     def __init__(
@@ -104,6 +106,7 @@ class DownloadSession:
         bilibili_cookie_display: str | None,
         progress_callback: ProgressCallback,
         log_callback: LogCallback,
+        cookie_header: str | None = None,
     ):
         self.urls = urls
         self.base_download_dir = base_download_dir
@@ -112,6 +115,7 @@ class DownloadSession:
         self.quality_label = quality_label
         self.bilibili_cookie_spec = bilibili_cookie_spec
         self.bilibili_cookie_display = bilibili_cookie_display
+        self.cookie_header = cookie_header
         self.format_selector = build_format_selector(download_mode, quality_label)
         self.progress_callback = progress_callback
         self.log_callback = log_callback
@@ -245,7 +249,6 @@ class DownloadSession:
                 "no_warnings": False,
                 "logger": QueueLogger(self.log_callback),
                 "progress_hooks": [hook],
-                "playlist_items": playlist_item,
                 # Network timeouts to prevent indefinite hangs
                 "socket_timeout": 30,
                 "timeout": 30,
@@ -262,8 +265,12 @@ class DownloadSession:
             if ffmpeg_location:
                 ydl_opts["ffmpeg_location"] = ffmpeg_location
 
-            if site == "BiliBili" and self.bilibili_cookie_spec:
-                ydl_opts["cookiesfrombrowser"] = self.bilibili_cookie_spec
+            if site == "BiliBili":
+                if self.bilibili_cookie_spec:
+                    ydl_opts["cookiesfrombrowser"] = self.bilibili_cookie_spec
+                elif self.cookie_header:
+                    # Use raw cookie header for BiliBili
+                    ydl_opts["http_headers"] = {"Cookie": self.cookie_header}
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -290,17 +297,13 @@ class DownloadSession:
                 failed_count += 1
                 self.log_callback(f"[{_idx}/{_total}] 失败: {_url}\n原因: {exc}")
 
-            # 清理 yt-dlp 可能遗留的临时文件（合并后的中间文件）
-            for temp_file in target_dir.glob("*.f*.webm"):
-                try:
-                    temp_file.unlink()
-                except OSError:
-                    pass
-            for temp_file in target_dir.glob("*.f*.m4a"):
-                try:
-                    temp_file.unlink()
-                except OSError:
-                    pass
+            # Clean up yt-dlp temp files (merged intermediate files)
+            for pattern in ("*.f*.webm", "*.f*.m4a", "*.part", "*.ytdl", "*.tmp"):
+                for temp_file in target_dir.glob(pattern):
+                    try:
+                        temp_file.unlink()
+                    except OSError:
+                        pass
 
             time.sleep(0.1)
 
@@ -314,9 +317,9 @@ class DownloadSession:
 # Cookie session
 # ---------------------------------------------------------------------------
 
-# Module-level cache for extracted cookie jars to avoid re-extraction
-# Key: (browser_name, profile) -> cookie_jar
-_COOKIE_JAR_CACHE: dict[tuple[str, str | None], Any] = {}
+# Per-instance cache for extracted cookie jars to avoid re-extraction
+# Using a simple dict with max size to prevent unbounded growth
+_MAX_COOKIE_JAR_CACHE = 8
 
 
 class CookieSession:
@@ -348,6 +351,8 @@ class CookieSession:
         self.status_callback = status_callback or (lambda _: None)
         self.found_callback = found_callback or (lambda *a: None)
         self.done_callback = done_callback or (lambda _: None)
+        # Instance-level bounded cache
+        self._cookie_jar_cache: dict[tuple[str, str | None], Any] = {}
 
     # -- public ----------------------------------------------------------------
 
@@ -370,9 +375,9 @@ class CookieSession:
             cache_key = (browser_name, profile)
 
             # Try to get cached cookie jar first
-            if cache_key in _COOKIE_JAR_CACHE:
+            if cache_key in self._cookie_jar_cache:
                 self.status_callback(f"{display_name}: 使用缓存的 Cookies")
-                cookie_jar = _COOKIE_JAR_CACHE[cache_key]
+                cookie_jar = self._cookie_jar_cache[cache_key]
             else:
                 try:
                     cookie_jar = extract_cookies_from_browser(
@@ -380,8 +385,12 @@ class CookieSession:
                         profile=profile,
                         logger=QueueLogger(self.status_callback),
                     )
-                    # Cache the cookie jar for future use
-                    _COOKIE_JAR_CACHE[cache_key] = cookie_jar
+                    # Cache the cookie jar for future use (bounded)
+                    if len(self._cookie_jar_cache) >= _MAX_COOKIE_JAR_CACHE:
+                        # Remove oldest entry
+                        oldest = next(iter(self._cookie_jar_cache))
+                        del self._cookie_jar_cache[oldest]
+                    self._cookie_jar_cache[cache_key] = cookie_jar
                 except (OSError, FileNotFoundError, PermissionError, ModuleNotFoundError, ImportError) as exc:
                     self.status_callback(f"{display_name}: 读取 Cookies 失败：{exc}")
                     continue

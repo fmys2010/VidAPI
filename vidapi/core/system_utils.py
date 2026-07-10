@@ -162,6 +162,30 @@ def detect_system_proxy() -> str | None:
     yt-dlp accepts one proxy URL for all traffic. Prefer HTTPS, then HTTP.
     """
     proxies = urllib.request.getproxies()
+    
+    # Parse no_proxy / NO_PROXY environment variable
+    no_proxy = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+    no_proxy_list = [p.strip().lower() for p in no_proxy.split(",") if p.strip()]
+    
+    def is_bypassed(host: str) -> bool:
+        host = host.lower()
+        for pattern in no_proxy_list:
+            if pattern == "*":
+                return True
+            if pattern.startswith("."):
+                if host.endswith(pattern[1:]):
+                    return True
+            elif host == pattern or host.endswith("." + pattern):
+                return True
+        return False
+    
+    # Target hosts for video sites - if any is bypassed, don't use proxy
+    target_hosts = ["youtube.com", "youtu.be", "bilibili.com", "b23.tv"]
+    
+    # Check if any target host is in no_proxy
+    if any(is_bypassed(h) for h in target_hosts):
+        return None
+    
     for key in ("https", "http", "all", "socks"):
         proxy = proxies.get(key)
         if proxy:
@@ -172,7 +196,6 @@ def detect_system_proxy() -> str | None:
             validated = _validate_proxy_url(proxy)
             if validated:
                 return validated
-            # If validation fails, continue to next proxy
     return None
 
 
