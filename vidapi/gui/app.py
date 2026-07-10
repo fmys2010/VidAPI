@@ -8,12 +8,10 @@ from __future__ import annotations
 import json
 import threading
 import webbrowser
-from pathlib import Path
 from queue import Queue
-from typing import Any
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, filedialog
+from tkinter import ttk, scrolledtext, messagebox
 
 
 class GUIApp:
@@ -63,8 +61,8 @@ class GUIApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("vidapi - 视频下载")
-        self.root.geometry("1000x850")
-        self.root.minsize(900, 750)
+        self.root.geometry("1600x900")
+        self.root.minsize(1200, 675)
         
         # Set window icon (placeholder)
         try:
@@ -164,17 +162,39 @@ class GUIApp:
         self.root.configure(background=bg)
 
     def create_widgets(self):
-        """Create all UI widgets."""
-        self.create_header()
-        self.create_input_section()
-        self.create_settings_section()
-        self.create_progress_section()
-        self.create_log_section()
+        """Create all UI widgets in horizontal layout."""
+        # Main horizontal container
+        main_container = ttk.Frame(self.root, style="TFrame")
+        main_container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Configure grid weights for 1:1 split
+        main_container.columnconfigure(0, weight=1, minsize=500)
+        main_container.columnconfigure(1, weight=1, minsize=500)
+        main_container.rowconfigure(0, weight=1)
+        
+        # Left panel - Input & Settings
+        left_panel = ttk.Frame(main_container, style="TFrame")
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        left_panel.rowconfigure(2, weight=1)
+        
+        # Right panel - Progress & Logs
+        right_panel = ttk.Frame(main_container, style="TFrame")
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        right_panel.rowconfigure(1, weight=1)
+        
+        # Left panel sections
+        self.create_header(left_panel)
+        self.create_input_section(left_panel)
+        self.create_settings_section(left_panel)
+        
+        # Right panel sections
+        self.create_progress_section(right_panel)
+        self.create_log_section(right_panel)
 
-    def create_header(self):
+    def create_header(self, parent):
         """Create header with title and subtitle."""
-        header_frame = ttk.Frame(self.root, style="TFrame")
-        header_frame.pack(fill="x", padx=20, pady=20)
+        header_frame = ttk.Frame(parent, style="TFrame")
+        header_frame.pack(fill="x", pady=(0, 15))
         
         title = ttk.Label(header_frame, text="vidapi", style="Title.TLabel")
         title.pack(side="left")
@@ -189,10 +209,10 @@ class GUIApp:
         api_docs_btn = ttk.Button(links_frame, text="API 文档", command=lambda: webbrowser.open("http://localhost:8000/docs"))
         api_docs_btn.pack(side="left", padx=5)
 
-    def create_input_section(self):
+    def create_input_section(self, parent):
         """Create URL input section with card."""
-        card = ttk.Frame(self.root, style="Card.TFrame", padding=20)
-        card.pack(fill="x", padx=20, pady=10)
+        card = ttk.Frame(parent, style="Card.TFrame", padding=20)
+        card.pack(fill="x", pady=(0, 15))
         
         # Title
         title = ttk.Label(card, text="视频链接", style="Card.TLabel", font=("Segoe UI", 12, "bold"))
@@ -229,10 +249,10 @@ class GUIApp:
         self.urls_label = ttk.Label(self.url_chips_frame, text="解析到的链接: 0 个", style="Card.TLabel", foreground=self.COLORS["text_secondary"])
         self.urls_label.pack(anchor="w")
 
-    def create_settings_section(self):
+    def create_settings_section(self, parent):
         """Create settings section with quality and mode selection."""
-        card = ttk.Frame(self.root, style="Card.TFrame", padding=20)
-        card.pack(fill="x", padx=20, pady=10)
+        card = ttk.Frame(parent, style="Card.TFrame", padding=20)
+        card.pack(fill="x")
         
         title = ttk.Label(card, text="下载设置", style="Card.TLabel", font=("Segoe UI", 12, "bold"))
         title.pack(anchor="w", pady=(0, 15))
@@ -267,10 +287,10 @@ class GUIApp:
         clear_btn = ttk.Button(btn_frame, text="清空", command=self.clear_all)
         clear_btn.pack(side="right", padx=5)
 
-    def create_progress_section(self):
+    def create_progress_section(self, parent):
         """Create progress display section."""
-        card = ttk.Frame(self.root, style="Card.TFrame", padding=20)
-        card.pack(fill="x", padx=20, pady=10)
+        card = ttk.Frame(parent, style="Card.TFrame", padding=20)
+        card.pack(fill="x", pady=(0, 15))
         
         title = ttk.Label(card, text="下载进度", style="Card.TLabel", font=("Segoe UI", 12, "bold"))
         title.pack(anchor="w", pady=(0, 15))
@@ -304,10 +324,10 @@ class GUIApp:
         self.progress_text_var = tk.StringVar(value="0%")
         ttk.Label(card, textvariable=self.progress_text_var, style="Card.TLabel", foreground=self.COLORS["text_secondary"]).pack(anchor="center")
 
-    def create_log_section(self):
+    def create_log_section(self, parent):
         """Create log display section."""
-        card = ttk.Frame(self.root, style="Card.TFrame", padding=20)
-        card.pack(fill="both", expand=True, padx=20, pady=10)
+        card = ttk.Frame(parent, style="Card.TFrame", padding=20)
+        card.pack(fill="both", expand=True)
         
         top_frame = ttk.Frame(card, style="Card.TFrame")
         top_frame.pack(fill="x")
@@ -574,7 +594,6 @@ class GUIApp:
     def _start_download_thread(self):
         """Download thread."""
         import requests
-        import json
         
         try:
             # Prepare request
@@ -627,7 +646,6 @@ class GUIApp:
     def stream_task_progress(self, task_id: str):
         """Stream task progress via SSE."""
         import requests
-        import json
         
         url = f"http://localhost:8000/api/v1/tasks/{task_id}/stream"
         
