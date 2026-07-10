@@ -109,6 +109,16 @@
 
         select {
             cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%236c757d' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px 12px;
+            padding-right: 40px;
+        }
+
+        select:focus {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%230d6efd' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
         }
 
         .btn {
@@ -503,7 +513,7 @@
             <div class="log-container" id="logContainer">
                 <div class="log-entry time">系统准备就绪</div>
             </div>
-            <button class="btn" onclick="clearLogs()" style="margin-top: 12px; background: var(--bg-primary); color: var(--text-secondary);">
+            <button class="btn" onclick="clearLogs()" style="margin-top: 12px; background: var(--text-secondary); color: white;">
                 清空日志
             </button>
         </div>
