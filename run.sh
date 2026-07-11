@@ -21,15 +21,13 @@ pip install --upgrade pip
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-# Run the server
-echo "Starting vidapi server on http://0.0.0.0:8000"
-echo "Web UI: http://0.0.0.0:8000 or http://0.0.0.0:8000/ui"
-echo "Desktop GUI: python run_gui.py (requires FastAPI server running)"
+# Run the unified app (backend + GUI)
+echo "Starting vidapi (backend + GUI)..."
+echo "API server: http://0.0.0.0:8000"
 echo "API docs: http://0.0.0.0:8000/docs"
-echo "ReDoc: http://0.0.0.0:8000/redoc"
-echo "Health: http://0.0.0.0:8000/health"
+echo "Web UI: http://0.0.0.0:8000/ui"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""
 
-uvicorn vidapi.main:app --host 0.0.0.0 --port 8000 --reload
+python run.py
