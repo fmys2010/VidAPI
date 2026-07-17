@@ -33,6 +33,7 @@ class Database:
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._create_tables()
         await self._migrate_add_site_column()
+        await self._migrate_add_subtitle_columns()
 
     async def _create_tables(self) -> None:
         """Create tables from schema.sql."""
@@ -51,6 +52,21 @@ class Database:
             logger.info("Adding missing 'site' column to tasks table")
             await self._conn.execute("ALTER TABLE tasks ADD COLUMN site TEXT")
             await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site)")
+            await self._conn.commit()
+
+    async def _migrate_add_subtitle_columns(self) -> None:
+        """Add subtitle columns to existing tasks table if missing."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
+        cursor = await self._conn.execute("PRAGMA table_info(tasks)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "subtitle_language" not in columns:
+            logger.info("Adding missing 'subtitle_language' column to tasks table")
+            await self._conn.execute("ALTER TABLE tasks ADD COLUMN subtitle_language TEXT")
+            await self._conn.commit()
+        if "embed_subtitles" not in columns:
+            logger.info("Adding missing 'embed_subtitles' column to tasks table")
+            await self._conn.execute("ALTER TABLE tasks ADD COLUMN embed_subtitles INTEGER DEFAULT 1")
             await self._conn.commit()
 
     async def close(self) -> None:
@@ -72,8 +88,8 @@ class Database:
             """
             INSERT INTO tasks (task_id, urls, state, progress_pct, current_file, error_msg,
                               created_at, updated_at, download_dir, format_selector, proxy,
-                              download_mode, quality, site)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              download_mode, quality, subtitle_language, embed_subtitles, site)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(task_id) DO UPDATE SET
                 urls = excluded.urls,
                 state = excluded.state,
@@ -86,6 +102,8 @@ class Database:
                 proxy = excluded.proxy,
                 download_mode = excluded.download_mode,
                 quality = excluded.quality,
+                subtitle_language = excluded.subtitle_language,
+                embed_subtitles = excluded.embed_subtitles,
                 site = excluded.site
             """,
             (
@@ -102,6 +120,8 @@ class Database:
                 task.get("proxy"),
                 task.get("download_mode"),
                 task.get("quality"),
+                task.get("subtitle_language"),
+                task.get("embed_subtitles", True),
                 task.get("site"),
             ),
         )
@@ -271,4 +291,7 @@ class Database:
         except json.JSONDecodeError:
             logger.warning("Corrupt JSON in urls column for task %s, returning empty list", task.get("task_id"))
             task["urls"] = []
+        # Convert embed_subtitles from int to bool (SQLite stores booleans as 0/1)
+        if "embed_subtitles" in task:
+            task["embed_subtitles"] = bool(task["embed_subtitles"])
         return task
