@@ -34,13 +34,52 @@ class TaskManager:
         # Thread pool for running synchronous yt-dlp downloads
         self.executor = ThreadPoolExecutor(max_workers=self.config.concurrency)
 
-        # In-memory progress queues for SSE streaming
-        self._progress_queues: dict[str, asyncio.Queue] = {}
+        # In-memory progress queues for SSE streaming (per-subscriber queues)
+        self._progress_queues: dict[str, dict[str, asyncio.Queue]] = {}
         # Active download sessions for cancellation support
         self._download_sessions: dict[str, DownloadSession] = {}
+        # Per-task cookie headers (in-memory only, not persisted to DB)
+        self._task_cookie_headers: dict[str, str] = {}
 
         # Background task for queue cleanup
         self._cleanup_task: asyncio.Task | None = None
+
+        # Strong references to running download tasks (prevents GC)
+        self._running_tasks: dict[str, asyncio.Task] = {}
+
+    def subscribe(self, task_id: str) -> tuple[asyncio.Queue, str]:
+        """Register a new SSE subscriber for a task; returns its dedicated queue + sub_id."""
+        sub_id = str(uuid.uuid4())[:8]
+        queue: asyncio.Queue = asyncio.Queue()
+        self._progress_queues.setdefault(task_id, {})[sub_id] = queue
+        return queue, sub_id
+
+    def unsubscribe(self, task_id: str, sub_id: str) -> None:
+        """Drop a single SSE subscriber; if it was the last one, remove the task's entry."""
+        subs = self._progress_queues.get(task_id)
+        if subs:
+            subs.pop(sub_id, None)
+            if not subs:
+                del self._progress_queues[task_id]
+
+    def _broadcast(self, task_id: str, event: dict[str, Any]) -> None:
+        """Push an event to all subscribers' queues for a task."""
+        subs = self._progress_queues.get(task_id)
+        if not subs:
+            return
+        for q in list(subs.values()):
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                pass  # queue is unbounded today; safety net if a maxsize is added later
+
+    def _close_stream(self, task_id: str) -> None:
+        """Remove all subscriber entries for a task (e.g. after completion)."""
+        self._progress_queues.pop(task_id, None)
+
+    def _start_download(self, task_id: str) -> None:
+        """Start a download task and hold a strong reference to prevent GC."""
+        self._running_tasks[task_id] = asyncio.create_task(self.run_download(task_id))
 
     async def start(self) -> None:
         """Initialize and recover tasks on startup."""
@@ -51,6 +90,9 @@ class TaskManager:
 
         # Start cleanup task
         self._cleanup_task = asyncio.create_task(self._cleanup_queues())
+
+    def has_active_downloads(self) -> bool:
+        return bool(self._download_sessions)
 
     async def stop(self) -> None:
         """Shutdown gracefully."""
@@ -73,17 +115,20 @@ class TaskManager:
         while True:
             await asyncio.sleep(60)
             to_remove = [
-                task_id for task_id, q in self._progress_queues.items()
-                if q.empty() and task_id not in self._download_sessions
+                task_id for task_id, subs in self._progress_queues.items()
+                if not subs and task_id not in self._download_sessions
             ]
             for task_id in to_remove:
                 del self._progress_queues[task_id]
 
-    def _get_queue(self, task_id: str) -> asyncio.Queue:
-        """Get or create progress queue for a task."""
-        if task_id not in self._progress_queues:
-            self._progress_queues[task_id] = asyncio.Queue()
-        return self._progress_queues[task_id]
+    def _close_stream(self, task_id: str) -> None:
+        """Remove all subscriber entries for a task (e.g. after completion)."""
+        self._progress_queues.pop(task_id, None)
+
+    def _start_download(self, task_id: str) -> None:
+        """Start a download task and keep a strong reference to it."""
+        task = asyncio.create_task(self.run_download(task_id))
+        self._running_tasks[task_id] = task
 
     # --- Task CRUD ---
 
@@ -96,6 +141,8 @@ class TaskManager:
         quality = request.get("quality", self.config.quality)
         proxy = request.get("proxy") or self.config.proxy or detect_system_proxy()
         cookie_header = request.get("cookie_header") or self.config.cookie_header
+        subtitle_language = request.get("subtitle_language", "中英双语（优先原生字幕）")
+        embed_subtitles = request.get("embed_subtitles", True)
 
         # Determine download directory
         download_dir = request.get("download_dir") or self.config.download_dir
@@ -105,7 +152,9 @@ class TaskManager:
         # Build format selector
         format_selector = build_format_selector(download_mode, quality)
 
-        # Create task record
+        site = classify_site(urls[0]) if urls else None
+
+        # Create task record (cookie_header NOT persisted — stored in-memory for runtime)
         task = {
             "task_id": task_id,
             "urls": urls,
@@ -118,10 +167,15 @@ class TaskManager:
             "download_dir": download_dir,
             "format_selector": format_selector,
             "proxy": proxy,
-            "cookie_header": cookie_header,
             "download_mode": download_mode,
             "quality": quality,
+            "subtitle_language": subtitle_language,
+            "embed_subtitles": embed_subtitles,
+            "site": site,
         }
+
+        # Store per-task cookie header in memory for DownloadSession (not in DB)
+        self._task_cookie_headers[task_id] = cookie_header
 
         # Persist to database
         await self.db.save_task(task)
@@ -164,8 +218,7 @@ class TaskManager:
             session.cancel()
 
         await self.db.update_task_state(task_id, "cancelled", "Cancelled by user")
-        queue = self._get_queue(task_id)
-        await queue.put({"event": "state_change", "data": {"state": "cancelled"}})
+        self._broadcast(task_id, {"event": "state_change", "data": {"state": "cancelled"}})
         return True
 
     # --- Progress tracking ---
@@ -193,8 +246,7 @@ class TaskManager:
         await self.db.save_task(task)
 
         # Emit to SSE queue
-        queue = self._get_queue(task_id)
-        event = {
+        self._broadcast(task_id, {
             "event": "progress",
             "data": {
                 "task_id": task_id,
@@ -203,14 +255,11 @@ class TaskManager:
                 "current_file": current_file,
                 "state": task["state"],
             },
-        }
-        await queue.put(event)
+        })
 
     async def log_message(self, task_id: str, message: str) -> None:
         """Emit log message to SSE queue."""
-        queue = self._get_queue(task_id)
-        event = {"event": "log", "data": {"task_id": task_id, "message": message}}
-        await queue.put(event)
+        self._broadcast(task_id, {"event": "log", "data": {"task_id": task_id, "message": message}})
 
     async def state_change(self, task_id: str, new_state: str, error: str | None = None) -> None:
         """Emit state change event."""
@@ -225,16 +274,14 @@ class TaskManager:
 
         await self.db.save_task(task)
 
-        queue = self._get_queue(task_id)
-        event = {
+        self._broadcast(task_id, {
             "event": "state_change",
             "data": {
                 "task_id": task_id,
                 "state": new_state,
                 "error": error,
             },
-        }
-        await queue.put(event)
+        })
 
     async def complete_task(
         self,
@@ -249,8 +296,7 @@ class TaskManager:
 
         await self.state_change(task_id, new_state, error)
 
-        queue = self._get_queue(task_id)
-        event = {
+        self._broadcast(task_id, {
             "event": "complete" if success else "error",
             "data": {
                 "task_id": task_id,
@@ -259,12 +305,14 @@ class TaskManager:
                 "failed": failed,
                 "skipped": skipped,
             },
-        }
-        await queue.put(event)
+        })
 
         # Cleanup
-        self._progress_queues.pop(task_id, None)
+        self._close_stream(task_id)
         self._download_sessions.pop(task_id, None)
+        task_ref = self._running_tasks.pop(task_id, None)
+        if task_ref and not task_ref.done():
+            task_ref.cancel()
 
     # --- Download execution ---
 
@@ -282,7 +330,9 @@ class TaskManager:
         proxy = task.get("proxy")
         download_mode = task["download_mode"]
         quality = task["quality"]
-        cookie_header = task.get("cookie_header")
+        cookie_header = self._task_cookie_headers.get(task_id)
+        subtitle_language = task.get("subtitle_language", "中英双语（优先原生字幕）")
+        embed_subtitles = task.get("embed_subtitles", True)
 
         bilibili_cookie_spec = None
         bilibili_cookie_display = "手动上传的 Cookie"
@@ -311,6 +361,8 @@ class TaskManager:
             bilibili_cookie_display=bilibili_cookie_display,
             progress_callback=make_progress_callback,
             log_callback=make_log_callback,
+            subtitle_language=subtitle_language,
+            embed_subtitles=embed_subtitles,
         )
 
         # Store session for cancellation support
@@ -331,11 +383,11 @@ class TaskManager:
     def _cleanup_download(self, task_id: str) -> None:
         """Clean up resources for a download task."""
         self._download_sessions.pop(task_id, None)
-        self._progress_queues.pop(task_id, None)
-
-    async def get_progress_stream(self, task_id: str) -> asyncio.Queue:
-        """Get progress queue for SSE streaming."""
-        return self._get_queue(task_id)
+        self._task_cookie_headers.pop(task_id, None)
+        task_ref = self._running_tasks.pop(task_id, None)
+        if task_ref and not task_ref.done():
+            task_ref.cancel()
+        self._close_stream(task_id)
 
     # --- Cookie verification ---
 

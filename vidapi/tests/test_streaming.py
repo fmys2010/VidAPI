@@ -57,7 +57,8 @@ class TestStreamTaskProgress:
         }
         mock_tm.get_task = AsyncMock(return_value=mock_task)
         mock_queue = asyncio.Queue()
-        mock_tm.get_progress_stream = AsyncMock(return_value=mock_queue)
+        mock_tm.subscribe = MagicMock(return_value=(mock_queue, "sub1"))
+        mock_tm.unsubscribe = MagicMock()
 
         # Put a sentinel to stop the generator
         async def consume_stream():
@@ -81,7 +82,8 @@ class TestStreamTaskProgress:
         mock_queue = MagicMock()
         mock_queue.get = slow_queue_get
         mock_queue.empty = MagicMock(return_value=True)
-        mock_tm.get_progress_stream = AsyncMock(return_value=mock_queue)
+        mock_tm.subscribe = MagicMock(return_value=(mock_queue, "sub1"))
+        mock_tm.unsubscribe = MagicMock()
 
     @pytest.mark.asyncio
     async def test_client_disconnect_handling(self):
@@ -96,7 +98,8 @@ class TestStreamTaskProgress:
         mock_queue = MagicMock()
         mock_queue.get = empty_queue_get
         mock_queue.empty = MagicMock(return_value=True)
-        mock_tm.get_progress_stream = AsyncMock(return_value=mock_queue)
+        mock_tm.subscribe = MagicMock(return_value=(mock_queue, "sub1"))
+        mock_tm.unsubscribe = MagicMock()
 
     @pytest.mark.asyncio
     async def test_queue_exception_breaks_loop(self):
@@ -111,7 +114,8 @@ class TestStreamTaskProgress:
         mock_queue = MagicMock()
         mock_queue.get = failing_queue_get
         mock_queue.empty = MagicMock(return_value=True)
-        mock_tm.get_progress_stream = AsyncMock(return_value=mock_queue)
+        mock_tm.subscribe = MagicMock(return_value=(mock_queue, "sub1"))
+        mock_tm.unsubscribe = MagicMock()
 
         # The generator should break on this exception
         # We can't easily test the StreamingResponse behavior, but we can

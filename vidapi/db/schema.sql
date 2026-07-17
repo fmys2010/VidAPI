@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     proxy          TEXT,
     cookie_header  TEXT,
     download_mode  TEXT,
-    quality        TEXT
+    quality        TEXT,
+    subtitle_language TEXT,
+    embed_subtitles INTEGER DEFAULT 1,
+    site           TEXT
 );
 
 CREATE TABLE IF NOT EXISTS config (
@@ -24,3 +27,4 @@ CREATE TABLE IF NOT EXISTS config (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site);

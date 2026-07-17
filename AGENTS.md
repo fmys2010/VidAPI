@@ -25,7 +25,7 @@ vidapi/
 | Change download logic | `vidapi/core/workers.py` | `DownloadSession.run()` drives yt-dlp |
 | Modify format/quality | `vidapi/core/format_utils.py` | `build_format_selector()` |
 | Adjust BiliBili cookies | `vidapi/core/cookie_utils.py` | Raw header injection only |
-| Change DB schema | `vidapi/db/schema.sql` + `migrate.py` | Tasks + config tables |
+| Change DB schema | `vidapi/db/schema.sql` | Tasks + config tables |
 | Update config defaults | `vidapi/core/config.py` | Pydantic Settings |
 | Task lifecycle | `vidapi/task_manager.py` | State machine + SSE queues |
 
@@ -58,7 +58,7 @@ vidapi/
 - Don't store cookies in DB — only raw header string in config
 
 ## UNIQUE STYLES
-- SSE streaming via `sse-starlette` (`/api/v1/tasks/{id}/stream`)
+- SSE streaming via raw `StreamingResponse` (`/api/v1/tasks/{id}/stream`)
 - Task recovery: `downloading` → `failed` on restart with "Server restarted" error
 - WAL mode + FKs on SQLite (`PRAGMA journal_mode=WAL`)
 - Cookie verification endpoint (`POST /cookies/bilibili` + `GET /status`)
@@ -66,7 +66,7 @@ vidapi/
 ## COMMANDS
 ```bash
 # Dev
-./run.sh                    # venv + uvicorn reload
+python run.py                    # venv + uvicorn reload
 uvicorn vidapi.main:app --reload
 
 # Test
@@ -82,8 +82,8 @@ docker-compose up -d
 
 ## NOTES
 - No CI/CD workflows (.github/workflows absent)
-- Tests directory empty; pytest config points to `vidapi/tests/`
+- Tests directory now contains 373+ tests; pytest config points to `vidapi/tests/`
 - SPEC.md is the authoritative design doc — 212 lines, keep in sync
-- `requirements.txt` duplicates pyproject deps; prefer pyproject
+- `requirements.txt` mirrors pyproject.toml deps; prefer pyproject
 - FFmpeg via `imageio-ffmpeg` (bundled) or system `ffmpeg`
 - Proxy: `HTTP_PROXY`/`HTTPS_PROXY` env or config `proxy` field

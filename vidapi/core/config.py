@@ -53,10 +53,13 @@ class Config:
             self._data = self.DEFAULT_CONFIG.copy()
 
     def save(self) -> None:
-        """Save configuration to JSON file."""
+        """Save configuration to JSON file atomically."""
         try:
-            with self.config_path.open("w", encoding="utf-8") as f:
+            import os
+            tmp = self.config_path.with_suffix(".json.tmp")
+            with tmp.open("w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, self.config_path)
             logger.debug("Saved config to %s", self.config_path)
         except OSError as e:
             logger.error("Failed to save config: %s", e)

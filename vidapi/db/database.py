@@ -32,36 +32,26 @@ class Database:
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._create_tables()
+        await self._migrate_add_site_column()
 
     async def _create_tables(self) -> None:
-        """Create tables if they don't exist."""
-        await self._conn.executescript("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                task_id        TEXT PRIMARY KEY,
-                urls           TEXT NOT NULL,
-                state          TEXT NOT NULL,
-                progress_pct   REAL DEFAULT 0,
-                current_file   TEXT,
-                error_msg      TEXT,
-                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                download_dir   TEXT,
-                format_selector TEXT,
-                proxy          TEXT,
-                cookie_header  TEXT,
-                download_mode  TEXT,
-                quality        TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS config (
-                key   TEXT PRIMARY KEY,
-                value TEXT
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
-            CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
-        """)
+        """Create tables from schema.sql."""
+        schema_path = Path(__file__).with_name("schema.sql")
+        schema_sql = schema_path.read_text(encoding="utf-8")
+        await self._conn.executescript(schema_sql)
         await self._conn.commit()
+
+    async def _migrate_add_site_column(self) -> None:
+        """Add site column to existing tasks table if missing."""
+        if not self._conn:
+            raise RuntimeError("Database not initialized")
+        cursor = await self._conn.execute("PRAGMA table_info(tasks)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "site" not in columns:
+            logger.info("Adding missing 'site' column to tasks table")
+            await self._conn.execute("ALTER TABLE tasks ADD COLUMN site TEXT")
+            await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site)")
+            await self._conn.commit()
 
     async def close(self) -> None:
         """Close database connection."""
@@ -82,7 +72,7 @@ class Database:
             """
             INSERT INTO tasks (task_id, urls, state, progress_pct, current_file, error_msg,
                               created_at, updated_at, download_dir, format_selector, proxy,
-                              cookie_header, download_mode, quality)
+                              download_mode, quality, site)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(task_id) DO UPDATE SET
                 urls = excluded.urls,
@@ -94,9 +84,9 @@ class Database:
                 download_dir = excluded.download_dir,
                 format_selector = excluded.format_selector,
                 proxy = excluded.proxy,
-                cookie_header = excluded.cookie_header,
                 download_mode = excluded.download_mode,
-                quality = excluded.quality
+                quality = excluded.quality,
+                site = excluded.site
             """,
             (
                 task["task_id"],
@@ -110,9 +100,9 @@ class Database:
                 task.get("download_dir"),
                 task.get("format_selector"),
                 task.get("proxy"),
-                task.get("cookie_header"),
                 task.get("download_mode"),
                 task.get("quality"),
+                task.get("site"),
             ),
         )
         await self._conn.commit()
@@ -148,8 +138,8 @@ class Database:
             query += " AND state = ?"
             params.append(state)
         if site:
-            query += " AND download_mode LIKE ?"
-            params.append(f"%{site}%")
+            query += " AND site = ?"
+            params.append(site)
 
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -174,8 +164,8 @@ class Database:
             query += " AND state = ?"
             params.append(state)
         if site:
-            query += " AND download_mode LIKE ?"
-            params.append(f"%{site}%")
+            query += " AND site = ?"
+            params.append(site)
 
         cursor = await self._conn.execute(query, params)
         row = await cursor.fetchone()

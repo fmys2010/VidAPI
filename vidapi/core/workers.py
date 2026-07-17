@@ -31,6 +31,7 @@ from vidapi.core.format_utils import (
     describe_selected_formats,
     quality_to_height,
     build_format_selector,
+    build_subtitle_opts,
     selected_video_height,
 )
 from vidapi.core.system_utils import format_bytes, format_eta, get_ffmpeg_location
@@ -93,6 +94,10 @@ class DownloadSession:
     log_callback : LogCallback
     cookie_header : str | None
         Raw Cookie header for BiliBili (used when bilibili_cookie_spec is not available)
+    subtitle_language : str
+        Subtitle language preference
+    embed_subtitles : bool
+        Whether to embed subtitles into video file
     """
 
     def __init__(
@@ -107,6 +112,8 @@ class DownloadSession:
         progress_callback: ProgressCallback,
         log_callback: LogCallback,
         cookie_header: str | None = None,
+        subtitle_language: str = "中英双语（优先原生字幕）",
+        embed_subtitles: bool = True,
     ):
         self.urls = urls
         self.base_download_dir = base_download_dir
@@ -116,6 +123,8 @@ class DownloadSession:
         self.bilibili_cookie_spec = bilibili_cookie_spec
         self.bilibili_cookie_display = bilibili_cookie_display
         self.cookie_header = cookie_header
+        self.subtitle_language = subtitle_language
+        self.embed_subtitles = embed_subtitles
         self.format_selector = build_format_selector(download_mode, quality_label)
         self.progress_callback = progress_callback
         self.log_callback = log_callback
@@ -271,6 +280,9 @@ class DownloadSession:
                 elif self.cookie_header:
                     # Use raw cookie header for BiliBili
                     ydl_opts["http_headers"] = {"Cookie": self.cookie_header}
+
+            subtitle_opts = build_subtitle_opts(self.subtitle_language, self.embed_subtitles)
+            ydl_opts.update(subtitle_opts)
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:

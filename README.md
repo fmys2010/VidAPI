@@ -16,10 +16,10 @@ Standalone video download API for BiliBili and YouTube, extracted from the Video
 
 ## Quick Start
 
-### Using run.sh (Recommended)
+### Using run.py (Recommended)
 
 ```bash
-./run.sh
+python run.py
 ```
 
 ### Manual Setup

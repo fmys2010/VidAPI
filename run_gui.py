@@ -21,6 +21,6 @@ from vidapi.gui.app import main
 if __name__ == "__main__":
     print("Starting vidapi GUI...")
     print("Note: Make sure the FastAPI server is running at http://localhost:8000")
-    print("Start server with: ./run.sh")
+    print("Start server with: python run.py")
     print()
     main()

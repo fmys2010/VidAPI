@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient, ASGITransport
+
+from vidapi.models import ConfigUpdate
+from vidapi.task_manager import TaskManager
 
 
 def _make_mock_app():
@@ -99,7 +105,7 @@ def _make_mock_app():
         raise HTTPException(status_code=404, detail="Task not found")
 
     # -- assemble under /api/v1 prefix --------------------------------------
-    from vidapi.models import ConfigUpdate, CookieUploadRequest, CreateTaskRequest
+    from vidapi.models import CookieUploadRequest, CreateTaskRequest
 
     api_v1 = APIRouter(prefix="/api/v1")
     api_v1.include_router(config_router, prefix="/config", tags=["config"])
@@ -329,3 +335,78 @@ class TestEdgeCaseUrls:
             ],
         })
         assert resp.status_code in (201, 422)
+
+
+class TestUpdateConfigConcurrencyGuard:
+    """C1: PUT /config with a different concurrency must not kill running downloads.
+
+    Calls the real route handler `vidapi.api.config.update_config` directly with a
+    real TaskManager (mocked executor). Captures the mock-executor reference BEFORE
+    the call (the handler replaces `task_manager.executor` on success), and patches
+    `ThreadPoolExecutor` so no real worker threads are spawned in tests.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blocked_when_downloads_active(self, task_manager: TaskManager):
+        from unittest.mock import patch
+        from vidapi.api.config import update_config
+
+        task_manager._download_sessions["fake-active-task"] = MagicMock()
+        mock_exec_before = task_manager.executor
+        with patch("concurrent.futures.ThreadPoolExecutor") as mock_tpe_cstr:
+            with pytest.raises(HTTPException) as exc:
+                await update_config(
+                    update=ConfigUpdate(concurrency=5),
+                    task_manager=task_manager,
+                )
+        assert exc.value.status_code == 409
+        mock_exec_before.shutdown.assert_not_called()
+        mock_tpe_cstr.assert_not_called()
+        assert task_manager.executor is mock_exec_before
+
+    @pytest.mark.asyncio
+    async def test_allowed_when_no_downloads(self, task_manager: TaskManager):
+        from unittest.mock import patch
+        from vidapi.api.config import update_config
+
+        mock_exec_before = task_manager.executor
+        with patch("concurrent.futures.ThreadPoolExecutor") as mock_tpe_cstr:
+            result = await update_config(
+                update=ConfigUpdate(concurrency=5),
+                task_manager=task_manager,
+            )
+        assert result.concurrency == 5
+        mock_exec_before.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        mock_tpe_cstr.assert_called_once_with(max_workers=5)
+        assert task_manager.executor is mock_tpe_cstr.return_value
+
+    @pytest.mark.asyncio
+    async def test_same_concurrency_no_swap(self, task_manager: TaskManager):
+        from unittest.mock import patch
+        from vidapi.api.config import update_config
+
+        current = task_manager.config.concurrency
+        mock_exec_before = task_manager.executor
+        with patch("concurrent.futures.ThreadPoolExecutor") as mock_tpe_cstr:
+            result = await update_config(
+                update=ConfigUpdate(concurrency=current),
+                task_manager=task_manager,
+            )
+        assert result.concurrency == current
+        mock_exec_before.shutdown.assert_not_called()
+        mock_tpe_cstr.assert_not_called()
+        assert task_manager.executor is mock_exec_before
+
+    @pytest.mark.asyncio
+    async def test_non_concurrency_change_unaffected_by_active_downloads(
+        self, task_manager: TaskManager
+    ):
+        from vidapi.api.config import update_config
+
+        task_manager._download_sessions["fake-active"] = MagicMock()
+        await update_config(
+            update=ConfigUpdate(download_dir="/tmp/foo"),
+            task_manager=task_manager,
+        )
+        assert task_manager.config.download_dir == "/tmp/foo"
+        task_manager.executor.shutdown.assert_not_called()

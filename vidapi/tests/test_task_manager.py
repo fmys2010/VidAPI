@@ -154,9 +154,9 @@ class TestTaskManagerProgressUpdates:
     @pytest.mark.asyncio
     async def test_log_message(self, task_manager: TaskManager):
         task_id = await task_manager.create_task({"urls": ["https://youtube.com/watch?v=x"]})
+        queue, _ = task_manager.subscribe(task_id)
         await task_manager.log_message(task_id, "test log entry")
         # The log is in the queue, not in the task data
-        queue = await task_manager.get_progress_stream(task_id)
         assert not queue.empty()
 
     @pytest.mark.asyncio
@@ -214,11 +214,9 @@ class TestTaskManagerCompleteTask:
     @pytest.mark.asyncio
     async def test_complete_task_cleanup_queues(self, task_manager: TaskManager):
         task_id = await task_manager.create_task({"urls": ["https://youtube.com/watch?v=x"]})
-        # Put something in the queue
-        queue = task_manager._get_queue(task_id)
-        await queue.put({"event": "test", "data": {}})
+        queue, _ = task_manager.subscribe(task_id)
+        queue.put_nowait({"event": "test", "data": {}})
         await task_manager.complete_task(task_id, success=True, failed=0, skipped=0)
-        # Queue should be cleaned up
         assert task_id not in task_manager._progress_queues
 
 
@@ -271,20 +269,56 @@ class TestTaskManagerDeleteTask:
         assert task is None
 
 
-class TestTaskManagerQueueManagement:
-    @pytest.mark.asyncio
-    async def test_get_queue_creates_if_missing(self, task_manager: TaskManager):
-        queue = task_manager._get_queue("new_task_id")
-        assert isinstance(queue, asyncio.Queue)
+class TestTaskManagerSubscriberBroadcast:
+    """C2: per-subscriber SSE queues. Unsubscribing one client must not break others."""
 
     @pytest.mark.asyncio
-    async def test_get_queue_returns_existing(self, task_manager: TaskManager):
-        q1 = task_manager._get_queue("task_1")
-        q2 = task_manager._get_queue("task_1")
-        assert q1 is q2
+    async def test_subscribe_returns_distinct_queues(self, task_manager: TaskManager):
+        q1, sub1 = task_manager.subscribe("t1")
+        q2, sub2 = task_manager.subscribe("t1")
+        assert q1 is not q2
+        assert sub1 != sub2
+        assert set(task_manager._progress_queues["t1"].keys()) == {sub1, sub2}
 
     @pytest.mark.asyncio
-    async def test_progress_stream_returns_queue(self, task_manager: TaskManager):
+    async def test_broadcast_delivers_to_all(self, task_manager: TaskManager):
+        q1, _ = task_manager.subscribe("t1")
+        q2, _ = task_manager.subscribe("t1")
+        task_manager._broadcast("t1", {"event": "log", "data": {"x": 1}})
+        assert q1.qsize() == q2.qsize() == 1
+        assert q1.get_nowait() == q2.get_nowait() == {"event": "log", "data": {"x": 1}}
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_last_removes_entry(self, task_manager: TaskManager):
+        _, sub = task_manager.subscribe("t1")
+        task_manager.unsubscribe("t1", sub)
+        assert "t1" not in task_manager._progress_queues
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_one_keeps_other_active(self, task_manager: TaskManager):
+        q1, sub1 = task_manager.subscribe("t1")
+        q2, _ = task_manager.subscribe("t1")
+        task_manager.unsubscribe("t1", sub1)
+        assert "t1" in task_manager._progress_queues
+        task_manager._broadcast("t1", {"event": "log", "data": {}})
+        assert q2.qsize() == 1
+        assert q1.qsize() == 0
+
+    @pytest.mark.asyncio
+    async def test_broadcast_no_subscribers_is_noop(self, task_manager: TaskManager):
+        task_manager._broadcast("no-such-task", {"event": "log", "data": {}})
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_unknown_is_noop(self, task_manager: TaskManager):
+        task_manager.unsubscribe("unknown", "unknown-sub")
+
+    @pytest.mark.asyncio
+    async def test_update_progress_broadcasts_to_all_subscribers(self, task_manager: TaskManager):
         task_id = await task_manager.create_task({"urls": ["https://youtube.com/watch?v=x"]})
-        queue = await task_manager.get_progress_stream(task_id)
-        assert isinstance(queue, asyncio.Queue)
+        q1, _ = task_manager.subscribe(task_id)
+        q2, _ = task_manager.subscribe(task_id)
+        await task_manager.update_progress(task_id, 50.0, "downloading", "video.mp4")
+        assert q1.qsize() == q2.qsize() == 1
+        e1 = q1.get_nowait()
+        assert e1["event"] == "progress"
+        assert e1["data"]["progress_pct"] == 50.0

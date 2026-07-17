@@ -33,7 +33,7 @@ async def stream_task_progress(
         raise HTTPException(status_code=404, detail="Task not found")
 
     async def event_generator():
-        queue = await task_manager.get_progress_stream(task_id)
+        queue, sub_id = task_manager.subscribe(task_id)
         try:
             # Send initial state
             yield make_sse_event("state_change", {
@@ -56,8 +56,8 @@ async def stream_task_progress(
                 except Exception:
                     break
         finally:
-            # Cleanup - remove queue on client disconnect
-            task_manager._progress_queues.pop(task_id, None)
+            # unsubscribe this client
+            task_manager.unsubscribe(task_id, sub_id)
 
     return StreamingResponse(
         event_generator(),

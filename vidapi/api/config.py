@@ -1,6 +1,6 @@
 """Configuration endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from vidapi.models import ConfigResponse, ConfigUpdate
 from vidapi.task_manager import TaskManager
@@ -47,9 +47,14 @@ async def update_config(
         config.quality = update.quality
     if update.download_mode is not None:
         config.download_mode = update.download_mode
-    if update.concurrency is not None:
+    if update.concurrency is not None and update.concurrency != config.concurrency:
+        if task_manager.has_active_downloads():
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot change concurrency while downloads are active; "
+                       "cancel or wait for them to finish",
+            )
         config.concurrency = update.concurrency
-        # Recreate executor with new concurrency - don't wait for running tasks
         task_manager.executor.shutdown(wait=False, cancel_futures=True)
         from concurrent.futures import ThreadPoolExecutor
         task_manager.executor = ThreadPoolExecutor(max_workers=update.concurrency)

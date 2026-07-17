@@ -25,6 +25,32 @@ QUALITY_OPTIONS = [
     "360p",
 ]
 
+# Subtitle options
+SUBTITLE_LANG_ZH = "zh"       # Chinese (native)
+SUBTITLE_LANG_EN = "en"       # English (native)
+SUBTITLE_LANG_ZH_HANS = "zh-Hans"  # Chinese Simplified
+SUBTITLE_LANG_ZH_HANT = "zh-Hant"  # Chinese Traditional
+
+# Native subtitle languages (preferred)
+SUBTITLE_NATIVE_LANGS = [SUBTITLE_LANG_ZH, SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH_HANT, SUBTITLE_LANG_EN]
+
+# Auto-translated fallback languages
+SUBTITLE_AUTO_TRANSLATE_LANGS = [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_EN]
+
+# Default subtitle languages for bilingual download (zh + en)
+SUBTITLE_DEFAULT_LANGS = [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_EN]
+
+# Map UI labels (Chinese) to yt-dlp language codes
+SUBTITLE_LANG_MAP = {
+    "简体中文": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH],
+    "英语": [SUBTITLE_LANG_EN],
+    "中英双语（优先原生字幕）": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH, SUBTITLE_LANG_EN],
+    "繁体中文": [SUBTITLE_LANG_ZH_HANT, SUBTITLE_LANG_ZH],
+    "日语": ["ja"],
+    "韩语": ["ko"],
+    "自动（视频默认语言）": [],
+}
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -65,6 +91,45 @@ def build_format_selector(download_mode: str, quality_label: str) -> str:
     if height:
         return f"bv*[height<={height}]+ba/b[height<={height}]/best[height<={height}]"
     return "bv*+ba/b"
+
+
+def build_subtitle_opts(subtitle_language: str, embed_subtitles: bool) -> dict[str, Any]:
+    """
+    Build yt-dlp subtitle options.
+
+    Priority order:
+    1. Native subtitles in requested languages
+    2. Auto-translated subtitles in requested languages (if native not available)
+
+    Args:
+        subtitle_language: Language preference from SubtitleLanguage enum
+        embed_subtitles: Whether to embed subtitles into video file (requires ffmpeg)
+
+    Returns:
+        Dict of yt-dlp options for subtitles
+    """
+    lang_codes = SUBTITLE_LANG_MAP.get(subtitle_language, [])
+
+    opts: dict[str, Any] = {
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitlesformat": "srt",
+    }
+
+    if lang_codes:
+        # Prefer native subtitles first, then auto-translated
+        opts["subtitleslangs"] = lang_codes
+    else:
+        # Auto: download all available native + auto-translated
+        opts["subtitleslangs"] = ["all"]
+        opts["writeautomaticsub"] = True
+
+    if embed_subtitles:
+        opts["embedsubtitles"] = True
+        opts["merge_output_format"] = "mp4"  # Ensure mp4 container for embedding
+
+    return opts
+
 
 # ── Describe / introspect yt-dlp info dicts ───────────────────────────
 

@@ -27,30 +27,18 @@ async def create_task(
     task_manager: TaskManager = Depends(get_task_manager),
 ):
     """Create a new download task."""
-    # Validate URLs - at least one should be BiliBili or YouTube
-    valid_urls = []
-    for url in request.urls:
-        site = task_manager.classify_site(url)
-        if site:
-            valid_urls.append(url)
-        else:
-            # Still allow but will be skipped
-            valid_urls.append(url)
-
-    if not valid_urls:
-        raise HTTPException(status_code=422, detail="No valid BiliBili or YouTube URLs provided")
-
     task_id = await task_manager.create_task({
-        "urls": valid_urls,
+        "urls": request.urls,
         "download_mode": request.download_mode,
         "quality": request.quality,
         "proxy": request.proxy,
         "cookie_header": request.cookie_header,
+        "subtitle_language": request.subtitle_language,
+        "embed_subtitles": request.embed_subtitles,
     })
 
     # Start download in background
-    import asyncio
-    asyncio.create_task(task_manager.run_download(task_id))
+    task_manager._start_download(task_id)
 
     task = await task_manager.get_task(task_id)
     if not task:

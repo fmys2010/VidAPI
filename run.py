@@ -25,17 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger("vidapi.unified")
 
 
-def run_server():
+def run_server(server: uvicorn.Server):
     """Run uvicorn server in a background thread."""
-    app = create_app()
-    config = uvicorn.Config(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info",
-        reload=False,  # disable reload in threaded mode
-    )
-    server = uvicorn.Server(config)
     server.run()
 
 
@@ -57,8 +48,18 @@ def wait_for_server(url: str = "http://localhost:8000/health", timeout: float = 
 def main():
     print("Starting vidapi (backend + GUI)...")
 
-    # Start FastAPI server in background thread
-    server_thread = threading.Thread(target=run_server, daemon=True, name="FastAPI-Server")
+    app = create_app()
+    config = uvicorn.Config(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+        reload=False,
+    )
+    server = uvicorn.Server(config)
+
+    # Start FastAPI server in background thread (non-daemon)
+    server_thread = threading.Thread(target=run_server, args=(server,), name="FastAPI-Server")
     server_thread.start()
 
     # Wait for server to be ready
@@ -72,6 +73,15 @@ def main():
 
     # Run GUI in main thread (blocking)
     gui_main()
+
+    # GUI exited — gracefully stop FastAPI server and wait for thread
+    print("GUI exited. Shutting down FastAPI server...")
+    server.should_exit = True
+    server_thread.join(timeout=10)
+    if server_thread.is_alive():
+        print("WARNING: FastAPI server thread did not exit cleanly within timeout")
+        sys.exit(1)
+    print("FastAPI server shut down gracefully.")
 
 
 if __name__ == "__main__":
