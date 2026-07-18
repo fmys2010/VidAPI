@@ -99,7 +99,7 @@ def build_subtitle_opts(subtitle_language: str, embed_subtitles: bool) -> dict[s
 
     Priority order:
     1. Native subtitles in requested languages
-    2. Auto-translated subtitles in requested languages (if native not available)
+    2. Auto-translated subtitles in requested languages (only for "auto" mode)
 
     Args:
         subtitle_language: Language preference from SubtitleLanguage enum
@@ -110,23 +110,28 @@ def build_subtitle_opts(subtitle_language: str, embed_subtitles: bool) -> dict[s
     """
     lang_codes = SUBTITLE_LANG_MAP.get(subtitle_language, [])
 
+    # Ponytail: only request auto-generated subtitles for "自动" mode.
+    # For explicit language choices, native subtitles are preferred; downloading
+    # both native + auto for the same language creates duplicate tracks that
+    # players render simultaneously (causing "two lines at once" overlap).
+    is_auto_mode = subtitle_language == "自动（视频默认语言）"
+
     opts: dict[str, Any] = {
         "writesubtitles": True,
-        "writeautomaticsub": True,
+        "writeautomaticsub": is_auto_mode,
         "subtitlesformat": "srt",
     }
 
     if lang_codes:
-        # Prefer native subtitles first, then auto-translated
         opts["subtitleslangs"] = lang_codes
     else:
-        # Auto: download all available native + auto-translated
+        # Auto mode: download all available native + auto-translated
         opts["subtitleslangs"] = ["all"]
         opts["writeautomaticsub"] = True
 
     if embed_subtitles:
         opts["embedsubtitles"] = True
-        opts["merge_output_format"] = "mp4"  # Ensure mp4 container for embedding
+        opts["merge_output_format"] = "mp4"
 
     return opts
 
