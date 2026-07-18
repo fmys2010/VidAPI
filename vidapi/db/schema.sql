@@ -27,4 +27,3 @@ CREATE TABLE IF NOT EXISTS config (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
-CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site);

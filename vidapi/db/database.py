@@ -51,8 +51,9 @@ class Database:
         if "site" not in columns:
             logger.info("Adding missing 'site' column to tasks table")
             await self._conn.execute("ALTER TABLE tasks ADD COLUMN site TEXT")
-            await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site)")
             await self._conn.commit()
+        await self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_site ON tasks(site)")
+        await self._conn.commit()
 
     async def _migrate_add_subtitle_columns(self) -> None:
         """Add subtitle columns to existing tasks table if missing."""
