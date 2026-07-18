@@ -326,7 +326,29 @@ class GUIApp:
         quality_combo = ttk.Combobox(settings_frame, textvariable=self.quality_var, values=self.QUALITY_OPTIONS, state="readonly", width=15)
         quality_combo.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         
-        # Download mode
+        # Subtitle language dropdown (row 1)
+        ttk.Label(settings_frame, text="字幕语言:", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.subtitle_options = ["自动", "zh-CN", "zh-TW", "en", "ja", "ko"]
+        self.subtitle_var = tk.StringVar(value="自动")
+        subtitle_combo = ttk.Combobox(settings_frame, textvariable=self.subtitle_var, values=self.subtitle_options, state="readonly", width=12)
+        subtitle_combo.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        # Embed subtitles checkbox (row 2, spans cols 0-3)
+        self.embed_subtitle_var = tk.IntVar(value=1)
+        embed_check = tk.Checkbutton(
+            settings_frame,
+            text="嵌入字幕到视频",
+            variable=self.embed_subtitle_var,
+            bg=self.COLORS["bg_card"],
+            fg=self.COLORS["text_primary"],
+            selectcolor=self.COLORS["bg_card"],
+            activebackground=self.COLORS["bg_card"],
+            activeforeground=self.COLORS["accent"],
+            font=("Segoe UI", 9)
+        )
+        embed_check.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=(5, 0))
+
+        # Download mode (row 1 of settings grid)
         ttk.Label(settings_frame, text="下载模式:", style="Card.TLabel").grid(row=0, column=2, sticky="w", padx=(20, 5), pady=5)
         self.mode_var = tk.StringVar(value=self.MODE_OPTIONS[0])
         mode_combo = ttk.Combobox(settings_frame, textvariable=self.mode_var, values=self.MODE_OPTIONS, state="readonly", width=20)
