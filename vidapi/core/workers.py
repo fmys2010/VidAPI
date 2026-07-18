@@ -14,7 +14,9 @@ Public API
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -41,6 +43,35 @@ from vidapi.core.url_utils import classify_site
 # ---------------------------------------------------------------------------
 # QueueLogger — copied from app.py:503-521 unchanged.
 # ---------------------------------------------------------------------------
+
+# Deno install paths beyond PATH — ~/.deno/bin/deno (unix) is the curl install
+# script default; AppData\Local\deno\deno.exe on Windows. Cached on first call.
+_DENO_SEARCH_PATHS = (
+    "~/.deno/bin/deno",
+    "~/.deno/bin/deno.exe",
+    "~/Library/Application Support/deno/bin/deno",
+    "~/AppData/Local/deno/deno.exe",
+)
+_deno_cache: str | None | bool = False
+
+
+def _find_deno() -> str | None:
+    """Locate the Deno executable. Returns its path or None."""
+    global _deno_cache
+    if _deno_cache is not False:
+        return _deno_cache if _deno_cache else None
+    path_on_path = shutil.which("deno")
+    if path_on_path:
+        _deno_cache = path_on_path
+        return path_on_path
+    for candidate in _DENO_SEARCH_PATHS:
+        expanded = os.path.expanduser(candidate)
+        if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
+            _deno_cache = expanded
+            return expanded
+    _deno_cache = None
+    return None
+
 
 class QueueLogger:
     def __init__(self, log_callback: Callable[[str], None]):
@@ -228,23 +259,18 @@ class DownloadSession:
                         100.0, f"下载完成，正在合并/后处理: {filename}"
                     )
 
-            # Extract index from URL query params (e.g. index=5) so yt-dlp
-            # downloads the correct video instead of always the first one.
+            # ponytail: distinguish "give me one video by id" from "give me the
+            # whole playlist". watch?v=ID&list=...&index=N must download only
+            # the video identified by v= (yt-dlp noplaylist=True); playlist?list=
+            # must download every entry (noplaylist=False). Without this yt-dlp
+            # pulls all 49 entries of the underlying playlist even when the URL
+            # points at index N — which is the user-reported bug.
             parsed = urlparse(url)
             query_params = dict(parse_qsl(parsed.query))
-            playlist_item_str = query_params.get("index", "1")
-            # Validate: only accept a positive integer to prevent yt-dlp injection.
-            if not re.fullmatch(r"[1-9]\d*", playlist_item_str):
-                playlist_item_str = "1"
-            playlist_item = int(playlist_item_str)
-            # Cap playlist_items to prevent DoS (e.g., index=999999999)
-            if playlist_item > 10000:
-                playlist_item = 10000
-
-            _idx = index
-            _url = url
-            _total = total
-
+            is_playlist_url = (
+                parsed.path == "/playlist"
+                and bool(query_params.get("list"))
+            )
             ydl_opts = {
                 "format": self.format_selector,
                 "outtmpl": str(
@@ -256,6 +282,7 @@ class DownloadSession:
                 "noprogress": True,
                 "quiet": True,
                 "no_warnings": False,
+                "noplaylist": not is_playlist_url,
                 # ponytail: ignoreerrors=True makes non-fatal errors (subtitle
                 # HTTP 429, postprocessing hiccups) warnings, not DownloadError.
                 # Confirmed against yt_dlp/YoutubeDL.py subtitle-fail path:
@@ -271,6 +298,13 @@ class DownloadSession:
                 # Limit concurrent fragment downloads for HLS/DASH
                 "concurrent_fragment_downloads": 4,
             }
+
+            # Auto-locate Deno so yt-dlp-ejs can solve YouTube nsig challenges
+            # even when Deno is not on the user's PATH (common on macOS where
+            # ~/.deno/bin is not in the default GUI shell PATH).
+            deno_bin = _find_deno()
+            if deno_bin:
+                ydl_opts["js_runtimes"] = {"deno": {"path": deno_bin}}
 
             if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY and self.download_mode != "仅视频（无声音）":
                 ydl_opts["merge_output_format"] = "mp4"
@@ -305,6 +339,10 @@ class DownloadSession:
             media_before = {
                 p.name for p in target_dir.glob("*") if p.suffix.lower() in media_suffixes
             }
+
+            _idx = index
+            _url = url
+            _total = total
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:

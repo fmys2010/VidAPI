@@ -836,9 +836,15 @@ class GUIApp:
             self.add_log(f"取消时出错: {e}", "error")
 
 
-def main():
-    """Run the GUI application."""
-    root = tk.Tk()
+def main(root: tk.Tk | None = None):
+    """Run the GUI application.
+
+    If ``root`` is supplied (e.g. by run.py so it can install a SIGINT handler
+    against the same Tk root), reuse it; otherwise create a fresh one.
+    """
+    owns_root = root is None
+    if owns_root:
+        root = tk.Tk()
     app = GUIApp(root)
     
     # Center window

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yt_dlp.utils
 
-from vidapi.core.workers import DownloadSession, CookieSession, QueueLogger
+from vidapi.core.workers import DownloadSession, CookieSession, QueueLogger, _find_deno
 
 
 class TestQueueLogger:
@@ -345,3 +345,130 @@ class TestDownloadSessionIgnoreErrors:
             f"ignoreerrors must be True so subtitle/PP failures become warnings; "
             f"got {captured_opts[0].get('ignoreerrors')!r}"
         )
+
+
+class TestDownloadSessionNoplaylist:
+    """watch?v=ID&list=... must download only the single video identified by
+    v= (noplaylist=True so yt-dlp ignores the &list= parameter). A bare
+    playlist?list=ID URL must download every entry (noplaylist=False)."""
+
+    def _capture_opts(self, tmp_path: Path, url: str) -> list[dict]:
+        captured: list[dict] = []
+
+        def factory(opts):
+            captured.append(opts)
+            ydl = MagicMock()
+            ydl.extract_info.return_value = {
+                "id": "abc", "title": "T", "duration": 1, "formats": [],
+                "requested_formats": [],
+            }
+            return ydl
+
+        fake_ytdlp = MagicMock()
+        fake_ytdlp.YoutubeDL.side_effect = factory
+        fake_ytdlp.YoutubeDL.return_value.__enter__.return_value.extract_info.return_value = {
+            "id": "abc", "title": "T", "duration": 1, "formats": [],
+            "requested_formats": [],
+        }
+
+        session = DownloadSession(
+            urls=[url],
+            base_download_dir=tmp_path / "downloads",
+            proxy=None,
+            download_mode="完整视频（画面+声音）",
+            quality_label="最佳",
+            bilibili_cookie_spec=None,
+            bilibili_cookie_display=None,
+            progress_callback=MagicMock(),
+            log_callback=MagicMock(),
+        )
+        with patch.dict("sys.modules", {"yt_dlp": fake_ytdlp}):
+            session.run()
+        return captured
+
+    def test_watch_with_list_param_sets_noplaylist_true(self, tmp_path: Path):
+        opts = self._capture_opts(
+            tmp_path,
+            "https://www.youtube.com/watch?v=yv2cp1fmSt0"
+            "&list=PLIkqtRtuM1TogfKj9u5MEYfXOMZVkVj-A&index=6",
+        )
+        assert opts, "YoutubeDL was never instantiated"
+        assert opts[0].get("noplaylist") is True, (
+            f"watch?v= URL must set noplaylist=True; got "
+            f"{opts[0].get('noplaylist')!r}"
+        )
+
+    def test_watch_without_list_param_sets_noplaylist_true(self, tmp_path: Path):
+        opts = self._capture_opts(
+            tmp_path, "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        )
+        assert opts[0].get("noplaylist") is True
+
+    def test_playlist_url_sets_noplaylist_false(self, tmp_path: Path):
+        opts = self._capture_opts(
+            tmp_path,
+            "https://www.youtube.com/playlist?list=PLIkqtRtuM1TogfKj9u5MEYfXOMZVkVj-A",
+        )
+        assert opts[0].get("noplaylist") is False, (
+            f"playlist?list= URL must set noplaylist=False so the whole "
+            f"playlist downloads; got {opts[0].get('noplaylist')!r}"
+        )
+
+    def test_js_runtimes_dict_shape_when_deno_found(self, tmp_path: Path, monkeypatch):
+        # yt-dlp requires {'deno': {'path': '/abs/deno'}} — string is rejected
+        # (YoutubeDL._clean_js_runtimes raises ValueError).
+        import vidapi.core.workers as w
+        monkeypatch.setattr(w, "_deno_cache", "/fake/deno")
+        opts = self._capture_opts(
+            tmp_path, "https://www.youtube.com/watch?v=abc",
+        )
+        js_runtimes = opts[0].get("js_runtimes")
+        assert isinstance(js_runtimes, dict), (
+            f"js_runtimes must be dict per yt-dlp._clean_js_runtimes; got {type(js_runtimes)}"
+        )
+        assert "deno" in js_runtimes
+        assert isinstance(js_runtimes["deno"], dict)
+        assert js_runtimes["deno"].get("path") == "/fake/deno"
+
+    def test_no_js_runtimes_when_deno_not_found(self, tmp_path: Path, monkeypatch):
+        import vidapi.core.workers as w
+        monkeypatch.setattr(w, "_deno_cache", None)
+        opts = self._capture_opts(
+            tmp_path, "https://www.youtube.com/watch?v=abc",
+        )
+        assert "js_runtimes" not in opts[0], (
+            f"when deno cannot be found, do not set js_runtimes (yt-dlp default "
+            f"""behavior applies); got {opts[0].get('js_runtimes')!r}"""
+        )
+
+
+class TestFindDeno:
+    """_find_deno() caches results and resolves Deno either via PATH or via
+    the well-known install locations (~/.deno/bin on Unix, AppData on Win)."""
+
+    def _reset_cache(self):
+        import vidapi.core.workers as w
+        w._deno_cache = False
+
+    def test_finds_on_path(self, monkeypatch):
+        import vidapi.core.workers as w
+        monkeypatch.setattr(w, "_DENO_SEARCH_PATHS", ())
+        self._reset_cache()
+        monkeypatch.setattr(w.shutil, "which", lambda _: "/usr/bin/deno")
+        assert _find_deno() == "/usr/bin/deno"
+
+    def test_returns_none_when_not_found(self, monkeypatch):
+        import vidapi.core.workers as w
+        monkeypatch.setattr(w, "_DENO_SEARCH_PATHS", ())
+        self._reset_cache()
+        monkeypatch.setattr(w.shutil, "which", lambda _: None)
+        assert _find_deno() is None
+
+    def test_caches_result(self, monkeypatch):
+        import vidapi.core.workers as w
+        monkeypatch.setattr(w, "_DENO_SEARCH_PATHS", ())
+        self._reset_cache()
+        monkeypatch.setattr(w.shutil, "which", lambda _: "/usr/bin/deno")
+        first = _find_deno()
+        monkeypatch.setattr(w.shutil, "which", lambda _: RuntimeError("must not be called"))
+        assert _find_deno() == first
