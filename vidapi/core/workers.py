@@ -51,6 +51,13 @@ _DENO_SEARCH_PATHS = (
     "~/.deno/bin/deno.exe",
     "~/Library/Application Support/deno/bin/deno",
     "~/AppData/Local/deno/deno.exe",
+    "~/scoop/apps/deno/current/deno.exe",
+    "~/scoop/shims/deno.exe",
+    "~/AppData/Local/Microsoft/WinGet/Links/deno.exe",
+    "~/AppData/Roaming/npm/deno.cmd",
+    "~/AppData/Local/Programs/deno/deno.exe",
+    "C:/ProgramData/chocolatey/bin/deno.exe",
+    "C:/Program Files/deno/deno.exe",
 )
 _deno_cache: str | None | bool = False
 
@@ -319,11 +326,25 @@ class DownloadSession:
             if deno_bin:
                 ydl_opts["js_runtimes"] = {"deno": {"path": deno_bin}}
 
+            # YouTube: use curl_cffi impersonation for signature decryption
+            # when deno is not available. This avoids the "No supported JS runtime"
+            # warning and allows YouTube extraction to work.
+            if not deno_bin:
+                try:
+                    from yt_dlp.networking.impersonate import ImpersonateTarget
+                    ydl_opts["impersonate"] = ImpersonateTarget("chrome")
+                    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android", "web"]}}
+                except Exception:
+                    pass  # curl_cffi not installed or impersonation failed
+
             # ponytail: subtitle-specific retries for HTTP 429 (rate limiting)
             # yt-dlp uses 'retries' for video/audio fragments, but subtitles
             # have a separate 'subtitlesretries' parameter. Set higher to
             # handle YouTube subtitle rate limits without failing the whole task.
             ydl_opts["subtitlesretries"] = 10
+
+            # YouTube: sleep between subtitle requests to avoid 429 rate limits
+            ydl_opts["sleep_subtitles"] = 5
 
             if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY and self.download_mode != "仅视频（无声音）":
                 ydl_opts["merge_output_format"] = "mp4"
