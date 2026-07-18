@@ -319,6 +319,12 @@ class DownloadSession:
             if deno_bin:
                 ydl_opts["js_runtimes"] = {"deno": {"path": deno_bin}}
 
+            # ponytail: subtitle-specific retries for HTTP 429 (rate limiting)
+            # yt-dlp uses 'retries' for video/audio fragments, but subtitles
+            # have a separate 'subtitlesretries' parameter. Set higher to
+            # handle YouTube subtitle rate limits without failing the whole task.
+            ydl_opts["subtitlesretries"] = 10
+
             if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY and self.download_mode != "仅视频（无声音）":
                 ydl_opts["merge_output_format"] = "mp4"
 

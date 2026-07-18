@@ -32,11 +32,11 @@ SUBTITLE_LANG_ZH_HANS = "zh-Hans"  # Chinese Simplified
 SUBTITLE_LANG_ZH_HANT = "zh-Hant"  # Chinese Traditional
 
 # Map UI labels (Chinese) to yt-dlp language codes
-# "原生" = auto mode (download all available native subtitles, no filter)
+# "中英双语" = Chinese + English native subtitles (no auto-generated)
 # "中文" = Chinese native subtitles
 # "英文" = English native subtitles
 SUBTITLE_LANG_MAP = {
-    "原生": [],  # auto mode: downloads all available native subtitles
+    "中英双语": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH, SUBTITLE_LANG_EN],
     "中文": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH],
     "英文": [SUBTITLE_LANG_EN],
 }
