@@ -284,6 +284,21 @@ class DownloadSession:
             subtitle_opts = build_subtitle_opts(self.subtitle_language, self.embed_subtitles)
             ydl_opts.update(subtitle_opts)
 
+            # ponytail: detect partial-success recovery. yt-dlp raises
+            # DownloadError if a non-fatal step (e.g. subtitle fetch 429, JS
+            # runtime warning) happens AFTER the video+audio already landed on
+            # disk. We snapshot media files before the call; if any new media
+            # file appeared despite the exception, treat this URL as success
+            # with a warning instead of marking the whole task failed.
+            media_suffixes = (
+                ".mp4", ".mkv", ".webm", ".m4a", ".opus", ".mp3",
+            ) if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY else (
+                ".m4a", ".opus", ".mp3", ".webm",
+            )
+            media_before = {
+                p.name for p in target_dir.glob("*") if p.suffix.lower() in media_suffixes
+            }
+
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -306,8 +321,23 @@ class DownloadSession:
                 success_count += 1
                 self.log_callback(f"[{_idx}/{_total}] 完成: {_url}")
             except Exception as exc:
-                failed_count += 1
-                self.log_callback(f"[{_idx}/{_total}] 失败: {_url}\n原因: {exc}")
+                # Re-raise user-cancel: that is a real cancellation, not a failure.
+                if self._cancel_requested:
+                    raise
+                media_after = {
+                    p.name for p in target_dir.glob("*")
+                    if p.suffix.lower() in media_suffixes
+                }
+                new_media = media_after - media_before
+                if new_media:
+                    self.log_callback(
+                        f"警告: yt-dlp 报告错误但媒体文件已落盘，按成功处理: {exc}"
+                    )
+                    success_count += 1
+                    self.log_callback(f"[{_idx}/{_total}] 完成（部分）: {_url}")
+                else:
+                    failed_count += 1
+                    self.log_callback(f"[{_idx}/{_total}] 失败: {_url}\n原因: {exc}")
 
             # Clean up yt-dlp temp files (merged intermediate files)
             for pattern in ("*.f*.webm", "*.f*.m4a", "*.part", "*.ytdl", "*.tmp"):

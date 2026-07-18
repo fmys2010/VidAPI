@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yt_dlp.utils
 
 from vidapi.core.workers import DownloadSession, CookieSession, QueueLogger
 
@@ -231,3 +232,69 @@ class TestDownloadSessionProgressHook:
         # Simulate a finished hook
         hook = session.run.__code__  # Just verify session was created
         assert session.urls == ["https://www.youtube.com/watch?v=abc"]
+
+
+class TestDownloadSessionSubtitleFailureRecovers:
+    """yt-dlp raises DownloadError when a non-fatal subtitle fetch 429s after
+    the actual video+audio already landed on disk. The whole task must not be
+    marked failed."""
+
+    def _make_session(self, tmp_path, log_cb=None):
+        return DownloadSession(
+            urls=["https://www.youtube.com/watch?v=abc"],
+            base_download_dir=tmp_path / "downloads",
+            proxy=None,
+            download_mode="完整视频（画面+声音）",
+            quality_label="最佳",
+            bilibili_cookie_spec=None,
+            bilibili_cookie_display=None,
+            progress_callback=MagicMock(),
+            log_callback=log_cb or MagicMock(),
+        )
+
+    def test_subtitle_429_after_video_downloaded_counts_as_success(self, tmp_path: Path):
+        logs: list[str] = []
+        session = self._make_session(tmp_path, log_cb=lambda m: logs.append(m))
+
+        def fake_extract_info(url, download=True):
+            # yt-dlp writes the merged mp4 to target_dir on disk, THEN raises
+            # when the follow-up subtitle step hits HTTP 429.
+            # classify_site() returns "Youtube" (lowercase 'u'), not "YouTube".
+            target = tmp_path / "downloads" / "Youtube"
+            (target / "Some Title [abc].mp4").write_bytes(b"\x00" * 100)
+            raise yt_dlp.utils.DownloadError(
+                "Unable to download video subtitles for 'zh-Hans': "
+                "HTTP Error 429: Too Many Requests"
+            )
+
+        fake_ydl = MagicMock()
+        fake_ydl.extract_info.side_effect = fake_extract_info
+        fake_ytdlp = MagicMock()
+        fake_ytdlp.YoutubeDL.return_value.__enter__.return_value = fake_ydl
+
+        with patch.dict("sys.modules", {"yt_dlp": fake_ytdlp}):
+            result = session.run()
+
+        assert result == (1, 0, 0), f"expected success, got {result}"
+        # A warning that mentions subtitles must reach the log.
+        assert any("字幕" in m or "subtitle" in m.lower() for m in logs), logs
+        # The "失败" line must NOT appear for this URL.
+        assert not any("[1/1] 失败" in m for m in logs), logs
+
+    def test_real_failure_still_counts_as_failure(self, tmp_path: Path):
+        """If extract_info fails AND no media file appeared, it stays a failure."""
+        session = self._make_session(tmp_path)
+        # Nothing pre-written to target_dir -> no recovery.
+
+        def fake_extract_info(url, download=True):
+            raise yt_dlp.utils.DownloadError("Video unavailable")
+
+        fake_ydl = MagicMock()
+        fake_ydl.extract_info.side_effect = fake_extract_info
+        fake_ytdlp = MagicMock()
+        fake_ytdlp.YoutubeDL.return_value.__enter__.return_value = fake_ydl
+
+        with patch.dict("sys.modules", {"yt_dlp": fake_ytdlp}):
+            result = session.run()
+
+        assert result == (0, 1, 0), f"expected failure, got {result}"

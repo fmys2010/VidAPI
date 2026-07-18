@@ -304,6 +304,7 @@ class TaskManager:
                 "success": success,
                 "failed": failed,
                 "skipped": skipped,
+                "error": error,
             },
         })
 

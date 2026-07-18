@@ -802,7 +802,11 @@ class GUIApp:
                 self.add_log("下载失败", "error")
                 
         elif event == "error":
-            error_msg = data.get("error_msg", data.get("message", "未知错误"))
+            error_msg = data.get("error") or data.get("error_msg") or data.get("message")
+            if not error_msg:
+                failed = data.get("failed", 0)
+                skipped = data.get("skipped", 0)
+                error_msg = f"失败 {failed}，跳过 {skipped}" if (failed or skipped) else "未知错误"
             self.add_log(f"错误: {error_msg}", "error")
 
     def handle_sse_event(self, event: str, data: dict):
@@ -824,8 +828,10 @@ class GUIApp:
             )
             if response.ok:
                 self.add_log("取消请求已发送", "info")
+            elif response.status_code == 400:
+                self.add_log("任务已结束，无需取消", "info")
             else:
-                self.add_log("取消请求失败", "error")
+                self.add_log(f"取消请求失败 (HTTP {response.status_code})", "error")
         except Exception as e:
             self.add_log(f"取消时出错: {e}", "error")
 
