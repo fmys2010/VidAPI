@@ -64,11 +64,24 @@ def _find_deno() -> str | None:
     if path_on_path:
         _deno_cache = path_on_path
         return path_on_path
+    # os.access(X_OK) on Windows checks execute permission the Unix way, which
+    # rejects .exe files that lack an executable bit — even though Windows has
+    # no such bit. A plain isfile check is the correct gate on every platform.
     for candidate in _DENO_SEARCH_PATHS:
         expanded = os.path.expanduser(candidate)
-        if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
+        if os.path.isfile(expanded):
             _deno_cache = expanded
             return expanded
+    # ponytail: also honor DENO_INSTALL for users who installed Deno somewhere
+    # other than the default. The official install scripts write to
+    # $DENO_INSTALL/bin on every platform.
+    deno_install = os.environ.get("DENO_INSTALL")
+    if deno_install:
+        for exe in ("deno", "deno.exe"):
+            candidate = os.path.join(deno_install, "bin", exe)
+            if os.path.isfile(candidate):
+                _deno_cache = candidate
+                return candidate
     _deno_cache = None
     return None
 

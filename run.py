@@ -10,6 +10,7 @@ import signal
 import threading
 import time
 import logging
+from typing import Any
 
 # Add vidapi to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,21 +50,25 @@ def wait_for_server(url: str = "http://localhost:8000/health", timeout: float = 
 def main():
     print("Starting vidapi (backend + GUI)...")
 
-    # ponytail: install SIGINT handler so Ctrl+C from the terminal cleanly
-    # exits both the GUI mainloop and the FastAPI server. Without this tk
-    # swallows KeyboardInterrupt on Linux/macOS and the FastAPI thread keeps
-    # the process alive past Ctrl+C, forcing the user to SIGKILL.
+    # ponytail: Ctrl+C cross-platform handling. The naive approach — install
+    # a signal.signal(SIGINT, handler) that calls root.quit() — fails on
+    # Windows because (1) the Tk Tcl/Tk mainloop is a blocking WaitEvent
+    # call that never returns to the Python interpreter, so the queued
+    # Python signal handler never runs, and (2) on Windows SIGINT fires on
+    # a separate console-control thread, where calling any Tk API is
+    # undefined (Tk is single-threaded by contract).
+    # The Tk project's own workaround (Guido van Rossum, cpython mailing
+    # list, 2001) is to install a `root.after(ms, poll)` heartbeat so the
+    # mainloop periodically re-enters Python and can act on a flag set by
+    # the signal handler. We do that here against a threading.Event so the
+    # signal handler only touches thread-safe primitives.
+    shutdown_event = threading.Event()
     server_holder: dict[str, uvicorn.Server | None] = {"server": None}
     tk_root_holder: dict[str, Any | None] = {"root": None}
 
     def _on_sigint(signum, frame):
         logger.info("Received SIGINT, shutting down...")
-        root = tk_root_holder.get("root")
-        if root is not None:
-            try:
-                root.after(0, root.quit)
-            except RuntimeError:
-                pass
+        shutdown_event.set()
         server = server_holder.get("server")
         if server is not None:
             server.should_exit = True
@@ -96,10 +101,24 @@ def main():
     print("FastAPI server ready. Starting GUI...")
     print()
 
-    # Run GUI in main thread (blocking) — pass the root back to the SIGINT handler
+    # Run GUI in main thread (blocking) — pass the root back to the SIGINT handler.
+    # Install a 200ms heartbeat so the mainloop periodically re-enters Python
+    # and can observe shutdown_event being set by the signal handler.
     import tkinter as tk
     root = tk.Tk()
     tk_root_holder["root"] = root
+
+    def _sigint_heartbeat():
+        if shutdown_event.is_set():
+            try:
+                root.quit()
+            except RuntimeError:
+                pass
+            return
+        root.after(200, _sigint_heartbeat)
+
+    root.after(200, _sigint_heartbeat)
+
     try:
         gui_main(root=root)
     finally:

@@ -472,3 +472,32 @@ class TestFindDeno:
         first = _find_deno()
         monkeypatch.setattr(w.shutil, "which", lambda _: RuntimeError("must not be called"))
         assert _find_deno() == first
+
+    def test_windows_exe_does_not_require_x_ok(self, monkeypatch, tmp_path):
+        # Ponytail: on Windows .exe files have no execute bit. _find_deno()
+        # must accept the file based on isfile() alone, never os.access(X_OK).
+        import vidapi.core.workers as w
+        fake_exe = tmp_path / "deno.exe"
+        fake_exe.write_bytes(b"MZ")
+        monkeypatch.setattr(
+            w, "_DENO_SEARCH_PATHS", (str(fake_exe),)
+        )
+        monkeypatch.setattr(w.shutil, "which", lambda _: None)
+        # Force os.access(..., X_OK) to return False as if we were on Windows
+        # without an executable bit.
+        monkeypatch.setattr(w.os, "access", lambda *a, **k: False)
+        self._reset_cache()
+        assert _find_deno() == str(fake_exe)
+
+    def test_honors_deno_install_env(self, monkeypatch, tmp_path):
+        # The official install scripts write to $DENO_INSTALL/bin/deno[.exe].
+        import vidapi.core.workers as w
+        bin_dir = tmp_path / "custom" / "bin"
+        bin_dir.mkdir(parents=True)
+        exe = bin_dir / "deno"
+        exe.write_bytes(b"#!/bin/sh\n")
+        monkeypatch.setattr(w, "_DENO_SEARCH_PATHS", ())
+        monkeypatch.setattr(w.shutil, "which", lambda _: None)
+        monkeypatch.setenv("DENO_INSTALL", str(tmp_path / "custom"))
+        self._reset_cache()
+        assert _find_deno() == str(exe)
