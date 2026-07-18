@@ -298,3 +298,50 @@ class TestDownloadSessionSubtitleFailureRecovers:
             result = session.run()
 
         assert result == (0, 1, 0), f"expected failure, got {result}"
+
+
+class TestDownloadSessionIgnoreErrors:
+    """yt-dlp must run with ignoreerrors=True so non-fatal failures
+    (subtitle 429, etc.) become warnings rather than DownloadError.
+    See yt_dlp/YoutubeDL.py line ~4499: when ignoreerrors is True,
+    subtitle download errors are reported as warnings and DownloadError
+    is not raised."""
+
+    def test_ydl_opts_has_ignoreerrors_true(self, tmp_path: Path):
+        captured_opts: list[dict] = []
+
+        def fake_ytdlp_factory(opts):
+            captured_opts.append(opts)
+            ydl = MagicMock()
+            ydl.extract_info.return_value = {
+                "id": "abc", "title": "T", "duration": 1, "formats": [],
+                "requested_formats": [],
+            }
+            return ydl
+
+        fake_ytdlp = MagicMock()
+        fake_ytdlp.YoutubeDL.side_effect = fake_ytdlp_factory
+        fake_ytdlp.YoutubeDL.return_value.__enter__.return_value.extract_info.return_value = {
+            "id": "abc", "title": "T", "duration": 1, "formats": [],
+            "requested_formats": [],
+        }
+
+        session = DownloadSession(
+            urls=["https://www.youtube.com/watch?v=abc"],
+            base_download_dir=tmp_path / "downloads",
+            proxy=None,
+            download_mode="完整视频（画面+声音）",
+            quality_label="最佳",
+            bilibili_cookie_spec=None,
+            bilibili_cookie_display=None,
+            progress_callback=MagicMock(),
+            log_callback=MagicMock(),
+        )
+        with patch.dict("sys.modules", {"yt_dlp": fake_ytdlp}):
+            session.run()
+
+        assert captured_opts, "YoutubeDL was never instantiated"
+        assert captured_opts[0].get("ignoreerrors") is True, (
+            f"ignoreerrors must be True so subtitle/PP failures become warnings; "
+            f"got {captured_opts[0].get('ignoreerrors')!r}"
+        )

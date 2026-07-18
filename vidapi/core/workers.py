@@ -256,6 +256,13 @@ class DownloadSession:
                 "noprogress": True,
                 "quiet": True,
                 "no_warnings": False,
+                # ponytail: ignoreerrors=True makes non-fatal errors (subtitle
+                # HTTP 429, postprocessing hiccups) warnings, not DownloadError.
+                # Confirmed against yt_dlp/YoutubeDL.py subtitle-fail path:
+                # with ignoreerrors=True, yt-dlp calls report_warning() instead
+                # of raise DownloadError(). This is the root-cause fix for
+                # users whose task fails after video/audio already landed.
+                "ignoreerrors": True,
                 "logger": QueueLogger(self.log_callback),
                 "progress_hooks": [hook],
                 # Network timeouts to prevent indefinite hangs
