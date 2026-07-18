@@ -13,6 +13,8 @@ from queue import Queue
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 
+from vidapi.models import SubtitleLanguage
+
 
 class GUIApp:
     """Main GUI application for vidapi."""
