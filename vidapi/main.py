@@ -9,7 +9,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from vidapi.core import get_config
 from vidapi.db import Database
@@ -60,7 +59,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """Create and configure FastAPI application."""
+    """Create and configure FastAPI application.
+
+    The web UI has been removed; the FastAPI app serves only the JSON API
+    surface (/api/v1/*), an OpenAPI debugger (/docs, /redoc), and a
+    /health probe. The user-facing surface is the native Tk GUI launched
+    by run.py, which talks to this FastAPI app on localhost.
+    """
     app = FastAPI(
         title="vidapi",
         description="Standalone video download API for BiliBili and YouTube",
@@ -79,21 +84,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Mount static files
-    app.mount("/static", StaticFiles(directory="vidapi/static"), name="static")
-
     # Include API routes
     app.include_router(api_router)
 
     @app.get("/")
-    @app.get("/ui")
-    async def serve_ui():
-        from fastapi.responses import HTMLResponse
-        import os
-        ui_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-        with open(ui_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
+    async def root_redirect():
+        # ponytail: no web UI ships anymore — return a one-line pointer so a
+        # stray HTTP request to the root does not 404 with no context.
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse("vidapi API. Start the Tk GUI: python run.py\n")
 
     @app.get("/health")
     async def health_check():
