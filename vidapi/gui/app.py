@@ -328,8 +328,8 @@ class GUIApp:
         
         # Subtitle language dropdown (row 1)
         ttk.Label(settings_frame, text="字幕语言:", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.subtitle_options = ["自动", "zh-CN", "zh-TW", "en", "ja", "ko"]
-        self.subtitle_var = tk.StringVar(value="自动")
+        self.subtitle_options = ["原生", "中文", "英文"]
+        self.subtitle_var = tk.StringVar(value="原生")
         subtitle_combo = ttk.Combobox(settings_frame, textvariable=self.subtitle_var, values=self.subtitle_options, state="readonly", width=12)
         subtitle_combo.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 

@@ -31,24 +31,14 @@ SUBTITLE_LANG_EN = "en"       # English (native)
 SUBTITLE_LANG_ZH_HANS = "zh-Hans"  # Chinese Simplified
 SUBTITLE_LANG_ZH_HANT = "zh-Hant"  # Chinese Traditional
 
-# Native subtitle languages (preferred)
-SUBTITLE_NATIVE_LANGS = [SUBTITLE_LANG_ZH, SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH_HANT, SUBTITLE_LANG_EN]
-
-# Auto-translated fallback languages
-SUBTITLE_AUTO_TRANSLATE_LANGS = [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_EN]
-
-# Default subtitle languages for bilingual download (zh + en)
-SUBTITLE_DEFAULT_LANGS = [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_EN]
-
 # Map UI labels (Chinese) to yt-dlp language codes
+# "原生" = auto mode (download all available native subtitles, no filter)
+# "中文" = Chinese native subtitles
+# "英文" = English native subtitles
 SUBTITLE_LANG_MAP = {
-    "简体中文": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH],
-    "英语": [SUBTITLE_LANG_EN],
-    "中英双语（优先原生字幕）": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH, SUBTITLE_LANG_EN],
-    "繁体中文": [SUBTITLE_LANG_ZH_HANT, SUBTITLE_LANG_ZH],
-    "日语": ["ja"],
-    "韩语": ["ko"],
-    "自动（视频默认语言）": [],
+    "原生": [],  # auto mode: downloads all available native subtitles
+    "中文": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH],
+    "英文": [SUBTITLE_LANG_EN],
 }
 
 

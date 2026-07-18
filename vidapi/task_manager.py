@@ -141,7 +141,7 @@ class TaskManager:
         quality = request.get("quality", self.config.quality)
         proxy = request.get("proxy") or self.config.proxy or detect_system_proxy()
         cookie_header = request.get("cookie_header") or self.config.cookie_header
-        subtitle_language = request.get("subtitle_language", "中英双语（优先原生字幕）")
+        subtitle_language = request.get("subtitle_language", "原生")
         embed_subtitles = request.get("embed_subtitles", True)
 
         # Determine download directory
@@ -332,7 +332,7 @@ class TaskManager:
         download_mode = task["download_mode"]
         quality = task["quality"]
         cookie_header = self._task_cookie_headers.get(task_id)
-        subtitle_language = task.get("subtitle_language", "中英双语（优先原生字幕）")
+        subtitle_language = task.get("subtitle_language", "原生")
         embed_subtitles = task.get("embed_subtitles", True)
 
         bilibili_cookie_spec = None
