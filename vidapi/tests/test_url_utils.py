@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from vidapi.core.url_utils import (
     classify_site,

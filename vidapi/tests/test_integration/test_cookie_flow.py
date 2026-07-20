@@ -2,15 +2,36 @@
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+import http.cookiejar
+from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 from vidapi.task_manager import TaskManager
-from vidapi.core.cookie_utils import verify_bilibili_cookie_jar
+from vidapi.core.config import Config
+
+
+def _cookie(name: str, value: str = "v", domain: str = ".bilibili.com") -> "http.cookiejar.Cookie":
+    """Build a minimal http.cookiejar.Cookie for tests."""
+    return http.cookiejar.Cookie(
+        version=0,
+        name=name,
+        value=value,
+        port=None,
+        port_specified=False,
+        domain=domain,
+        domain_specified=True,
+        domain_initial_dot=domain.startswith("."),
+        path="/",
+        path_specified=True,
+        secure=True,
+        expires=None,
+        discard=False,
+        comment=None,
+        comment_url=None,
+        rest={},
+    )
 
 
 class TestCookieVerificationFlow:
@@ -23,36 +44,40 @@ class TestCookieVerificationFlow:
         valid_cookie_header: str,
     ):
         """Full flow: upload cookie → verify → use in download."""
-        # Step 1: Upload cookie
-        response = await client.post(
-            "/api/v1/cookies/bilibili",
-            json={"cookie_header": valid_cookie_header},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ok"] is True
-        assert "stored" in data["message"].lower()
-        
-        # Step 2: Verify cookie status
-        response = await client.get("/api/v1/cookies/bilibili/status")
-        assert response.status_code == 200
-        status = response.json()
-        assert "ok" in status
-        assert "online" in status
-        assert "message" in status
-        
-        # Step 3: Create task with cookie
-        response = await client.post(
-            "/api/v1/tasks",
-            json={
-                "urls": ["https://www.bilibili.com/video/BV1xx4y1XX77"],
-                "cookie_header": valid_cookie_header,
-            },
-        )
-        assert response.status_code == 201
-        task = response.json()
-        assert task["state"] == "pending"
-    
+        # ponytail: fake SESSDATA can't pass BiliBili's real login check; mock the
+        # verifier so this test covers API wiring, not BiliBili's auth backend.
+        with patch("vidapi.task_manager.verify_bilibili_cookie_jar") as mock_verify:
+            mock_verify.return_value = {"ok": True, "online": False, "message": "mock"}
+            # Step 1: Upload cookie
+            response = await client.post(
+                "/api/v1/cookies/bilibili",
+                json={"cookie_header": valid_cookie_header},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["ok"] is True
+            assert "stored" in data["message"].lower()
+
+            # Step 2: Verify cookie status
+            response = await client.get("/api/v1/cookies/bilibili/status")
+            assert response.status_code == 200
+            status = response.json()
+            assert "ok" in status
+            assert "online" in status
+            assert "message" in status
+
+            # Step 3: Create task with cookie
+            response = await client.post(
+                "/api/v1/tasks",
+                json={
+                    "urls": ["https://www.bilibili.com/video/BV1xx4y1XX77"],
+                    "cookie_header": valid_cookie_header,
+                },
+            )
+            assert response.status_code == 201
+            task = response.json()
+            assert task["state"] == "pending"
+
     @pytest.mark.asyncio
     async def test_cookie_verification_with_sessdata_only(
         self,
@@ -60,18 +85,19 @@ class TestCookieVerificationFlow:
     ):
         """Verify cookie with just SESSDATA."""
         cookie = "SESSDATA=abc123"
-        
-        response = await client.post(
-            "/api/v1/cookies/bilibili",
-            json={"cookie_header": cookie},
-        )
-        assert response.status_code == 200
-        
-        response = await client.get("/api/v1/cookies/bilibili/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert "ok" in data
-    
+        with patch("vidapi.task_manager.verify_bilibili_cookie_jar") as mock_verify:
+            mock_verify.return_value = {"ok": True, "online": False, "message": "mock"}
+            response = await client.post(
+                "/api/v1/cookies/bilibili",
+                json={"cookie_header": cookie},
+            )
+            assert response.status_code == 200
+
+            response = await client.get("/api/v1/cookies/bilibili/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert "ok" in data
+
     @pytest.mark.asyncio
     async def test_cookie_verification_with_full_cookie(
         self,
@@ -79,18 +105,19 @@ class TestCookieVerificationFlow:
     ):
         """Verify cookie with SESSDATA + bili_jct + DedeUserID."""
         cookie = "SESSDATA=abc123; bili_jct=xyz789; DedeUserID=123456"
-        
-        response = await client.post(
-            "/api/v1/cookies/bilibili",
-            json={"cookie_header": cookie},
-        )
-        assert response.status_code == 200
-        
-        response = await client.get("/api/v1/cookies/bilibili/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert "ok" in data
-        assert "online" in data
+        with patch("vidapi.task_manager.verify_bilibili_cookie_jar") as mock_verify:
+            mock_verify.return_value = {"ok": True, "online": False, "message": "mock"}
+            response = await client.post(
+                "/api/v1/cookies/bilibili",
+                json={"cookie_header": cookie},
+            )
+            assert response.status_code == 200
+
+            response = await client.get("/api/v1/cookies/bilibili/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert "ok" in data
+            assert "online" in data
     
     @pytest.mark.asyncio
     async def test_cookie_verification_fails_gracefully(
@@ -393,13 +420,15 @@ class TestCookieAPIEndpoints:
         valid_cookie_header: str,
     ):
         """POST /cookies/bilibili endpoint."""
-        response = await client.post(
-            "/api/v1/cookies/bilibili",
-            json={"cookie_header": valid_cookie_header},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ok"] is True
+        with patch("vidapi.task_manager.verify_bilibili_cookie_jar") as mock_verify:
+            mock_verify.return_value = {"ok": True, "online": False, "message": "mock"}
+            response = await client.post(
+                "/api/v1/cookies/bilibili",
+                json={"cookie_header": valid_cookie_header},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["ok"] is True
     
     @pytest.mark.asyncio
     async def test_upload_cookie_validation_error(
@@ -516,7 +545,7 @@ class TestCookieConfigIntegration:
         assert response.status_code == 201
         
         # Task should inherit cookie from config
-        task = response.json()
+        response.json()
         # Note: Actual verification would require checking DownloadSession
     
     @pytest.mark.asyncio
@@ -595,7 +624,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_inspect_bilibili_cookie_jar_has_sessdata(self):
         """inspect_bilibili_cookie_jar detects SESSDATA."""
-        from vidapi.core.cookie_utils import inspect_bilibili_cookie_jar, _cookie
+        from vidapi.core.cookie_utils import inspect_bilibili_cookie_jar
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()
@@ -607,7 +636,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_inspect_bilibili_cookie_jar_missing_sessdata(self):
         """inspect_bilibili_cookie_jar detects missing SESSDATA."""
-        from vidapi.core.cookie_utils import inspect_bilibili_cookie_jar, _cookie
+        from vidapi.core.cookie_utils import inspect_bilibili_cookie_jar
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()
@@ -619,7 +648,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_build_cookie_header_single(self):
         """build_cookie_header builds single cookie."""
-        from vidapi.core.cookie_utils import build_cookie_header, _cookie
+        from vidapi.core.cookie_utils import build_cookie_header
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()
@@ -630,7 +659,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_build_cookie_header_multiple(self):
         """build_cookie_header builds multiple cookies."""
-        from vidapi.core.cookie_utils import build_cookie_header, _cookie
+        from vidapi.core.cookie_utils import build_cookie_header
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()
@@ -644,7 +673,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_build_cookie_header_wrong_domain_excluded(self):
         """build_cookie_header excludes wrong domain cookies."""
-        from vidapi.core.cookie_utils import build_cookie_header, _cookie
+        from vidapi.core.cookie_utils import build_cookie_header
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()
@@ -655,7 +684,7 @@ class TestCookieVerificationWithRealUtils:
     
     def test_build_cookie_header_duplicates_deduplicated(self):
         """build_cookie_header deduplicates same-name cookies."""
-        from vidapi.core.cookie_utils import build_cookie_header, _cookie
+        from vidapi.core.cookie_utils import build_cookie_header
         import http.cookiejar
         
         jar = http.cookiejar.CookieJar()

@@ -5,11 +5,8 @@ from __future__ import annotations
 import http.cookiejar
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from vidapi.core.cookie_utils import (
-    BILIBILI_COOKIE_CANDIDATES,
-    BILIBILI_LOGIN_COOKIE_NAMES,
     build_cookie_header,
     inspect_bilibili_cookie_jar,
     is_bilibili_cookie,

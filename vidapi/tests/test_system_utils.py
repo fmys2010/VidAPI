@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from vidapi.core.system_utils import (
     _validate_proxy_url,

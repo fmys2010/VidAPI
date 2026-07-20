@@ -18,6 +18,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 def get_task_manager() -> TaskManager:
     from vidapi.main import get_task_manager as _get_task_manager
+
     return _get_task_manager()
 
 
@@ -27,15 +28,8 @@ async def create_task(
     task_manager: TaskManager = Depends(get_task_manager),
 ):
     """Create a new download task."""
-    task_id = await task_manager.create_task({
-        "urls": request.urls,
-        "download_mode": request.download_mode,
-        "quality": request.quality,
-        "proxy": request.proxy,
-        "cookie_header": request.cookie_header,
-        "subtitle_language": request.subtitle_language,
-        "embed_subtitles": request.embed_subtitles,
-    })
+    # ponytail: exclude_unset so quality/mode left at default fall back to config
+    task_id = await task_manager.create_task(request.model_dump(exclude_unset=True))
 
     # Start download in background
     task_manager._start_download(task_id)
@@ -56,7 +50,9 @@ async def list_tasks(
     task_manager: TaskManager = Depends(get_task_manager),
 ):
     """List tasks with optional filters."""
-    tasks = await task_manager.list_tasks(state=state, site=site.value if site else None, limit=limit, offset=offset)
+    tasks = await task_manager.list_tasks(
+        state=state, site=site.value if site else None, limit=limit, offset=offset
+    )
     total = await task_manager.count_tasks(state=state, site=site.value if site else None)
     return TaskListResponse(tasks=[TaskResponse(**t) for t in tasks], total=total)
 
@@ -78,13 +74,12 @@ async def delete_task(
     task_id: str,
     task_manager: TaskManager = Depends(get_task_manager),
 ):
-    """Cancel and delete a task."""
-    success = await task_manager.cancel_task(task_id)
-    if not success:
-        # Try delete even if not cancellable
-        deleted = await task_manager.delete_task(task_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Task not found")
+    """Cancel (if running) and delete a task. 404 if the task never existed."""
+    existed = await task_manager.get_task(task_id) is not None
+    if not existed:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await task_manager.cancel_task(task_id)
+    await task_manager.delete_task(task_id)
 
 
 @router.post("/{task_id}/cancel")

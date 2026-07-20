@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import tempfile
 from pathlib import Path
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import aiosqlite
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from vidapi.api import api_router
 from vidapi.core.config import Config
 from vidapi.db.database import Database
-from vidapi.main import create_app, lifespan
+from vidapi.main import create_app
 from vidapi.task_manager import TaskManager
 
 
@@ -73,10 +69,13 @@ async def task_manager(database: Database, config: Config) -> AsyncGenerator[Tas
         tm.config = config
         # Use a small executor for tests
         from concurrent.futures import ThreadPoolExecutor
+
         tm.executor = ThreadPoolExecutor(max_workers=2)
         tm._progress_queues = {}
         tm._download_sessions = {}
+        await tm.start()
         yield tm
+        await tm.stop()
         tm.executor.shutdown(wait=False)
 
 
@@ -85,20 +84,21 @@ async def app(config: Config, database: Database, task_manager: TaskManager) -> 
     """Create a real FastAPI app with test dependencies."""
     # Patch the global instances
     import vidapi.main as main_module
+
     original_task_manager = main_module._task_manager
     original_database = main_module._database
-    
+
     main_module._task_manager = task_manager
     main_module._database = database
-    
+
     # Create app with test lifespan
     app = create_app()
-    
+
     # Manually run startup
     await task_manager.start()
-    
+
     yield app
-    
+
     # Cleanup
     await task_manager.stop()
     main_module._task_manager = original_task_manager
@@ -121,12 +121,60 @@ async def streaming_client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
 
+@pytest.fixture(autouse=True)
+def _mock_download_session_global():
+    """Autouse: replace vidapi.task_manager.DownloadSession with a fast mock
+    so tests that go through POST /tasks never hit the real yt-dlp / network.
+
+    Known sites (YouTube/BiliBili) succeed. Unknown hosts raise
+    UnsupportedSiteError so run_download's except branch records
+    state=failed with an "unsupported" message — matching what the real
+    DownloadSession does for sites the format selector can't reach.
+
+    Tests that need a specific DownloadSession override this with their own
+    `with patch("vidapi.task_manager.DownloadSession") as ...:` block, which
+    takes precedence for the duration of the with-statement."""
+    from vidapi.core.url_utils import classify_site
+
+    class UnsupportedSiteError(Exception):
+        pass
+
+    def _factory(urls=None, **kwargs):
+        session = MagicMock()
+        session.cancel = MagicMock()
+        session.format_selector = "bv*+ba/b"
+        session._cancel_requested = False
+        first_url = (urls or [None])[0]
+        site = classify_site(first_url) if first_url else "youtube"
+        if site in ("Youtube", "BiliBili"):
+            session.run = MagicMock(return_value=(1, 0, 0))
+        else:
+            session.run = MagicMock(
+                side_effect=UnsupportedSiteError(f"Unsupported site: {first_url}")
+            )
+        return session
+
+    with patch("vidapi.task_manager.DownloadSession", side_effect=_factory):
+        yield
+
+
 @pytest.fixture
 def mock_download_session() -> MagicMock:
     """Mock DownloadSession that simulates a successful download."""
     session = MagicMock()
     # run() is called in executor, so it must be sync and return tuple directly
     session.run = MagicMock(return_value=(1, 0, 0))  # success=1, failed=0, skipped=0
+    session.cancel = MagicMock()
+    session.format_selector = "bv*+ba/b"
+    session._cancel_requested = False
+    return session
+
+
+@pytest.fixture
+def mock_successful_download() -> MagicMock:
+    """Alias for mock_download_session (some tests use this name)."""
+    session = MagicMock()
+    session.run = MagicMock(return_value=(1, 0, 0))
     session.cancel = MagicMock()
     session.format_selector = "bv*+ba/b"
     session._cancel_requested = False
@@ -155,13 +203,25 @@ def mock_ytdlp_success():
             "duration": 100,
             "formats": [],
             "requested_formats": [
-                {"format_id": "137", "ext": "mp4", "height": 1080, "vcodec": "avc1", "acodec": "none"},
-                {"format_id": "140", "ext": "m4a", "height": None, "vcodec": "none", "acodec": "mp4a"}
-            ]
+                {
+                    "format_id": "137",
+                    "ext": "mp4",
+                    "height": 1080,
+                    "vcodec": "avc1",
+                    "acodec": "none",
+                },
+                {
+                    "format_id": "140",
+                    "ext": "m4a",
+                    "height": None,
+                    "vcodec": "none",
+                    "acodec": "mp4a",
+                },
+            ],
         }
         mock_ydl.download = MagicMock()
         mock_ytdlp.YoutubeDL.return_value.__enter__.return_value = mock_ydl
-        
+
         with patch.dict("sys.modules", {"yt_dlp": mock_ytdlp}):
             yield mock_ytdlp
 
@@ -175,7 +235,7 @@ def mock_ytdlp_failure():
         mock_ydl.extract_info.side_effect = Exception("Video unavailable")
         mock_ydl.download.side_effect = Exception("Video unavailable")
         mock_ytdlp.YoutubeDL.return_value.__enter__.return_value = mock_ydl
-        
+
         with patch.dict("sys.modules", {"yt_dlp": mock_ytdlp}):
             yield mock_ytdlp
 
@@ -200,7 +260,7 @@ def valid_cookie_header() -> str:
 
 class MockDownloadSession:
     """A mock DownloadSession that can be controlled for testing."""
-    
+
     def __init__(
         self,
         urls: list[str],
@@ -220,25 +280,26 @@ class MockDownloadSession:
         self.progress_callback = None
         self.log_callback = None
         self.format_selector = "bv*+ba/b"
-    
+
     @property
     def _cancel_requested(self) -> bool:
         return self._cancel_requested
-    
+
     @_cancel_requested.setter
     def _cancel_requested(self, value: bool):
         self._cancel_requested = value
-    
+
     def cancel(self):
         self._cancel_requested = True
-    
+
     def run(self):
         import time
+
         total = len(self.urls)
         for i, url in enumerate(self.urls):
             if self._cancel_requested:
                 return (0, 0, total - i)
-            
+
             # Simulate progress updates
             if self.progress_callback:
                 for p in [10, 30, 50, 70, 90, 100]:
@@ -246,14 +307,14 @@ class MockDownloadSession:
                         return (0, 0, total - i)
                     self.progress_callback(p, f"Downloading {url}... {p}%")
                     time.sleep(self.delay)
-            
+
             if self.log_callback:
                 self.log_callback(f"Processing {url}")
-            
+
             time.sleep(self.delay)
-        
+
         return (self.success_count, self.fail_count, self.skip_count)
-    
+
     def set_callbacks(self, progress_cb, log_cb):
         self.progress_callback = progress_cb
         self.log_callback = log_cb
@@ -262,6 +323,7 @@ class MockDownloadSession:
 @pytest.fixture
 def mock_download_session_factory():
     """Factory for creating controlled MockDownloadSession instances."""
+
     def _factory(
         urls: list[str],
         success_count: int = 1,
@@ -276,4 +338,5 @@ def mock_download_session_factory():
             skip_count=skip_count,
             delay=delay,
         )
+
     return _factory

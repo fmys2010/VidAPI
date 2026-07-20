@@ -15,7 +15,6 @@ Public API
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import sys
 import time
@@ -129,6 +128,7 @@ DoneCallback = Callable[[bool], None]
 # Download session
 # ---------------------------------------------------------------------------
 
+
 class DownloadSession:
     """Synchronous download session using yt-dlp and callbacks for progress.
 
@@ -163,7 +163,7 @@ class DownloadSession:
         progress_callback: ProgressCallback,
         log_callback: LogCallback,
         cookie_header: str | None = None,
-        subtitle_language: str = "中英双语（优先原生字幕）",
+        subtitle_language: str = "中英双语",
         embed_subtitles: bool = True,
     ):
         self.urls = urls
@@ -195,9 +195,7 @@ class DownloadSession:
         try:
             import yt_dlp
         except ModuleNotFoundError:
-            self.log_callback(
-                "缺少依赖 yt-dlp。请运行：python -m pip install -r requirements.txt"
-            )
+            self.log_callback("缺少依赖 yt-dlp。请运行：python -m pip install -r requirements.txt")
             return (0, 0, 0)
 
         ffmpeg_location, ffmpeg_error = get_ffmpeg_location()
@@ -227,9 +225,7 @@ class DownloadSession:
             site = classify_site(url)
             if site is None:
                 skipped_count += 1
-                self.log_callback(
-                    f"[{index}/{total}] 跳过非 BiliBili/Youtube 链接: {url}"
-                )
+                self.log_callback(f"[{index}/{total}] 跳过非 BiliBili/Youtube 链接: {url}")
                 continue
 
             target_dir = self.base_download_dir / site
@@ -252,9 +248,7 @@ class DownloadSession:
                 status = d.get("status")
                 if status == "downloading":
                     downloaded = d.get("downloaded_bytes") or 0
-                    total_bytes = d.get("total_bytes") or d.get(
-                        "total_bytes_estimate"
-                    ) or 0
+                    total_bytes = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                     speed = d.get("speed")
                     eta = d.get("eta")
                     filename = Path(d.get("filename") or "").name
@@ -275,9 +269,7 @@ class DownloadSession:
 
                 elif status == "finished":
                     filename = Path(d.get("filename") or "").name
-                    self.progress_callback(
-                        100.0, f"下载完成，正在合并/后处理: {filename}"
-                    )
+                    self.progress_callback(100.0, f"下载完成，正在合并/后处理: {filename}")
 
             # ponytail: distinguish "give me one video by id" from "give me the
             # whole playlist". watch?v=ID&list=...&index=N must download only
@@ -287,10 +279,7 @@ class DownloadSession:
             # points at index N — which is the user-reported bug.
             parsed = urlparse(url)
             query_params = dict(parse_qsl(parsed.query))
-            is_playlist_url = (
-                parsed.path == "/playlist"
-                and bool(query_params.get("list"))
-            )
+            is_playlist_url = parsed.path == "/playlist" and bool(query_params.get("list"))
             ydl_opts = {
                 "format": self.format_selector,
                 "outtmpl": str(
@@ -332,6 +321,7 @@ class DownloadSession:
             if not deno_bin:
                 try:
                     from yt_dlp.networking.impersonate import ImpersonateTarget
+
                     ydl_opts["impersonate"] = ImpersonateTarget("chrome")
                     ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android", "web"]}}
                 except Exception:
@@ -346,7 +336,10 @@ class DownloadSession:
             # YouTube: sleep between subtitle requests to avoid 429 rate limits
             ydl_opts["sleep_subtitles"] = 5
 
-            if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY and self.download_mode != "仅视频（无声音）":
+            if (
+                self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY
+                and self.download_mode != "仅视频（无声音）"
+            ):
                 ydl_opts["merge_output_format"] = "mp4"
 
             if self.proxy:
@@ -372,9 +365,21 @@ class DownloadSession:
             # file appeared despite the exception, treat this URL as success
             # with a warning instead of marking the whole task failed.
             media_suffixes = (
-                ".mp4", ".mkv", ".webm", ".m4a", ".opus", ".mp3",
-            ) if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY else (
-                ".m4a", ".opus", ".mp3", ".webm",
+                (
+                    ".mp4",
+                    ".mkv",
+                    ".webm",
+                    ".m4a",
+                    ".opus",
+                    ".mp3",
+                )
+                if self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY
+                else (
+                    ".m4a",
+                    ".opus",
+                    ".mp3",
+                    ".webm",
+                )
             )
             media_before = {
                 p.name for p in target_dir.glob("*") if p.suffix.lower() in media_suffixes
@@ -410,14 +415,11 @@ class DownloadSession:
                 if self._cancel_requested:
                     raise
                 media_after = {
-                    p.name for p in target_dir.glob("*")
-                    if p.suffix.lower() in media_suffixes
+                    p.name for p in target_dir.glob("*") if p.suffix.lower() in media_suffixes
                 }
                 new_media = media_after - media_before
                 if new_media:
-                    self.log_callback(
-                        f"警告: yt-dlp 报告错误但媒体文件已落盘，按成功处理: {exc}"
-                    )
+                    self.log_callback(f"警告: yt-dlp 报告错误但媒体文件已落盘，按成功处理: {exc}")
                     success_count += 1
                     self.log_callback(f"[{_idx}/{_total}] 完成（部分）: {_url}")
                 else:
@@ -518,12 +520,20 @@ class CookieSession:
                         oldest = next(iter(self._cookie_jar_cache))
                         del self._cookie_jar_cache[oldest]
                     self._cookie_jar_cache[cache_key] = cookie_jar
-                except (OSError, FileNotFoundError, PermissionError, ModuleNotFoundError, ImportError) as exc:
+                except (
+                    OSError,
+                    FileNotFoundError,
+                    PermissionError,
+                    ModuleNotFoundError,
+                    ImportError,
+                ) as exc:
                     self.status_callback(f"{display_name}: 读取 Cookies 失败：{exc}")
                     continue
                 except Exception as exc:
                     # Catch-all for unexpected errors from yt-dlp internals
-                    self.status_callback(f"{display_name}: 读取 Cookies 失败：{type(exc).__name__}: {exc}")
+                    self.status_callback(
+                        f"{display_name}: 读取 Cookies 失败：{type(exc).__name__}: {exc}"
+                    )
                     continue
 
             local = inspect_bilibili_cookie_jar(cookie_jar)
@@ -535,9 +545,7 @@ class CookieSession:
                 )
                 continue
 
-            self.status_callback(
-                f"{display_name}: 发现登录 Cookies，正在在线测试..."
-            )
+            self.status_callback(f"{display_name}: 发现登录 Cookies，正在在线测试...")
             test_result = verify_bilibili_cookie_jar(cookie_jar, self.proxy)
             message = test_result["message"]
             self.status_callback(f"{display_name}: {message}")
@@ -555,7 +563,5 @@ class CookieSession:
             self.done_callback(True)
             return
 
-        self.status_callback(
-            "未获取到可用的 B 站 Cookies；请先在浏览器登录 B 站后重试"
-        )
+        self.status_callback("未获取到可用的 B 站 Cookies；请先在浏览器登录 B 站后重试")
         self.done_callback(False)

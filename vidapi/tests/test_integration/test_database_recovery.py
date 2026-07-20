@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -107,11 +107,11 @@ class TestDatabaseSchema:
     
     @pytest.mark.asyncio
     async def test_foreign_keys_enabled(self, temp_db: Database):
-        """Foreign keys pragma is ON."""
-        async with aiosqlite.connect(temp_db.db_path) as conn:
-            cursor = await conn.execute("PRAGMA foreign_keys")
-            fk = (await cursor.fetchone())[0]
-        
+        """Foreign keys pragma is ON on the shared connection."""
+        # ponytail: PRAGMA foreign_keys is per-connection in SQLite; a fresh
+        # aiosqlite connection defaults to OFF. Query the live Database conn.
+        cursor = await temp_db._conn.execute("PRAGMA foreign_keys")
+        fk = (await cursor.fetchone())[0]
         assert fk == 1
 
 
@@ -522,18 +522,20 @@ class TestDatabaseEdgeCases:
         assert task["urls"] == []
     
     @pytest.mark.asyncio
-    async def test_null_urls_field_handled(
+    async def test_empty_urls_json_handled(
         self,
         database: Database,
     ):
-        """NULL urls field handled gracefully."""
+        # ponytail: schema is urls TEXT NOT NULL — NULL insert is unreachable in
+        # production. Test the empty-list JSON shape instead, which is the real
+        # edge case save_task + get_task must round-trip.
         await database._conn.execute(
-            "INSERT INTO tasks (task_id, urls, state) VALUES (?, NULL, ?)",
-            ("null_urls_task", "pending")
+            "INSERT INTO tasks (task_id, urls, state) VALUES (?, ?, ?)",
+            ("empty_urls_task", "[]", "pending")
         )
         await database._conn.commit()
-        
-        task = await database.get_task("null_urls_task")
+
+        task = await database.get_task("empty_urls_task")
         assert task is not None
         assert task["urls"] == []
     

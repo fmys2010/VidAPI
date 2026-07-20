@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 from vidapi.task_manager import TaskManager
@@ -240,10 +239,9 @@ class TestTaskStateMachine:
         task_id = await task_manager.create_task({
             "urls": [sample_youtube_url],
         })
-        
-        await task_manager.log_message(task_id, "Test log message")
-        
+
         queue = await task_manager.get_progress_stream(task_id)
+        await task_manager.log_message(task_id, "Test log message")
         assert not queue.empty()
         
         event = await queue.get()

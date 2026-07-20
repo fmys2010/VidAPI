@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yt_dlp.utils
 
 from vidapi.core.workers import DownloadSession, CookieSession, QueueLogger, _find_deno
@@ -230,7 +229,6 @@ class TestDownloadSessionProgressHook:
         )
 
         # Simulate a finished hook
-        hook = session.run.__code__  # Just verify session was created
         assert session.urls == ["https://www.youtube.com/watch?v=abc"]
 
 

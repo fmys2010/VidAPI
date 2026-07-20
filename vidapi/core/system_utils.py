@@ -230,7 +230,7 @@ def get_ffmpeg_location() -> tuple[str | None, str | None]:
                error_message is None on success, or a user-friendly message on failure
     """
     try:
-        import imageio_ffmpeg  # noqa: F811
+        import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe(), None
     except ModuleNotFoundError:
         return None, "imageio-ffmpeg not installed. Run: pip install imageio-ffmpeg"

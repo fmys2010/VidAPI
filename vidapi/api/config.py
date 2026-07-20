@@ -11,6 +11,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 def get_task_manager() -> TaskManager:
     from vidapi.main import get_task_manager as _get_task_manager
+
     return _get_task_manager()
 
 
@@ -44,20 +45,22 @@ async def update_config(
     if update.proxy is not None:
         config.proxy = update.proxy
     if update.quality is not None:
-        config.quality = update.quality
+        # ponytail: Config stores raw str ("1080p"). update.quality is a Quality
+        # enum (pydantic coerces "1080p" -> Quality.P1080). Store its .value,
+        # not the enum — str(Quality.P1080) is "Quality.P1080" on Python 3.13
+        # and that bogus string would break the next ConfigResponse validation.
+        config.quality = update.quality.value
     if update.download_mode is not None:
-        config.download_mode = update.download_mode
+        config.download_mode = update.download_mode.value
     if update.concurrency is not None and update.concurrency != config.concurrency:
-        if task_manager.has_active_downloads():
+        if task_manager.has_running_tasks():
             raise HTTPException(
                 status_code=409,
-                detail="Cannot change concurrency while downloads are active; "
-                       "cancel or wait for them to finish",
+                detail="Cannot change concurrency while downloads are active or queued; "
+                "cancel or wait for them to finish",
             )
         config.concurrency = update.concurrency
-        task_manager.executor.shutdown(wait=False, cancel_futures=True)
-        from concurrent.futures import ThreadPoolExecutor
-        task_manager.executor = ThreadPoolExecutor(max_workers=update.concurrency)
+        task_manager.resize_executor(update.concurrency)
     if update.auto_merge is not None:
         config.auto_merge = update.auto_merge
     if update.cookie_header is not None:

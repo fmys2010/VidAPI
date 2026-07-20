@@ -14,7 +14,7 @@ from vidapi.task_manager import TaskManager
 
 def _make_mock_app():
     """Build a FastAPI app with fully mocked-out lifespan so no real DB/executors are touched."""
-    from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+    from fastapi import APIRouter, FastAPI, HTTPException, Query
 
     app = FastAPI()
 

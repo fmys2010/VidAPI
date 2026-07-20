@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting vidapi...")
 
     config = get_config()
-    db_path = Path(config.config_path).parent / "tasks.sqlite3" if hasattr(config, 'config_path') else None
+    db_path = Path(config.config_path).parent / "tasks.sqlite3"
 
     _database = Database(db_path)
     await _database.init()
@@ -79,7 +79,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -92,6 +92,7 @@ def create_app() -> FastAPI:
         # ponytail: no web UI ships anymore — return a one-line pointer so a
         # stray HTTP request to the root does not 404 with no context.
         from fastapi.responses import PlainTextResponse
+
         return PlainTextResponse("vidapi API. Start the Tk GUI: python run.py\n")
 
     @app.get("/health")
@@ -119,4 +120,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("vidapi.main:app", host="0.0.0.0", port=8000, reload=True)

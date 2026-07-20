@@ -1,7 +1,11 @@
 """yt-dlp format selector and description utilities."""
 
+import logging
 import re
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 # ── Constants ────────────────────────────────────────────────────────
@@ -26,8 +30,8 @@ QUALITY_OPTIONS = [
 ]
 
 # Subtitle options
-SUBTITLE_LANG_ZH = "zh"       # Chinese (native)
-SUBTITLE_LANG_EN = "en"       # English (native)
+SUBTITLE_LANG_ZH = "zh"  # Chinese (native)
+SUBTITLE_LANG_EN = "en"  # English (native)
 SUBTITLE_LANG_ZH_HANS = "zh-Hans"  # Chinese Simplified
 SUBTITLE_LANG_ZH_HANT = "zh-Hant"  # Chinese Traditional
 
@@ -43,6 +47,7 @@ SUBTITLE_LANG_MAP = {
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def quality_to_height(quality_label: str) -> int | None:
     if quality_label == "最佳":
@@ -71,10 +76,8 @@ def build_format_selector(download_mode: str, quality_label: str) -> str:
         return "bv*[acodec=none]/bestvideo/bv*"
 
     if download_mode != DOWNLOAD_MODE_AV:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Unknown download_mode: %r, falling back to %r",
-            download_mode, DOWNLOAD_MODE_AV
+        logger.warning(
+            "Unknown download_mode: %r, falling back to %r", download_mode, DOWNLOAD_MODE_AV
         )
 
     # Default: complete video, merge best video + best audio when needed.
@@ -87,37 +90,33 @@ def build_subtitle_opts(subtitle_language: str, embed_subtitles: bool) -> dict[s
     """
     Build yt-dlp subtitle options.
 
-    Priority order:
-    1. Native subtitles in requested languages
-    2. Auto-translated subtitles in requested languages (only for "auto" mode)
+    yt-dlp subtitle pool (YoutubeDL._process_subtitles):
+      available = manual_subs + (automatic_subs if writeautomaticsub else [])
+    then subtitleslangs filters that pool. So if writeautomaticsub is False,
+    YouTube auto-translated tracks are NEVER in the pool — a request for
+    "zh-Hans" on an English-native video yields no file even though YouTube
+    can auto-translate. That was the user-reported "no subtitles downloaded"
+    bug: the prior code hardcoded writeautomaticsub=False for every real
+    SubtitleLanguage value.
 
-    Args:
-        subtitle_language: Language preference from SubtitleLanguage enum
-        embed_subtitles: Whether to embed subtitles into video file (requires ffmpeg)
-
-    Returns:
-        Dict of yt-dlp options for subtitles
+    Fix: always enable writeautomaticsub. yt-dlp writes manual + auto as
+    separate sidecars when both exist for the same lang; players pick one
+    track, so the duplicate-track concern is a ux preference, not a defect,
+    and beats silently dropping the user's chosen language.
     """
     lang_codes = SUBTITLE_LANG_MAP.get(subtitle_language, [])
 
-    # Ponytail: only request auto-generated subtitles for "自动" mode.
-    # For explicit language choices, native subtitles are preferred; downloading
-    # both native + auto for the same language creates duplicate tracks that
-    # players render simultaneously (causing "two lines at once" overlap).
-    is_auto_mode = subtitle_language == "自动（视频默认语言）"
-
     opts: dict[str, Any] = {
         "writesubtitles": True,
-        "writeautomaticsub": is_auto_mode,
+        "writeautomaticsub": True,
         "subtitlesformat": "srt",
     }
 
     if lang_codes:
         opts["subtitleslangs"] = lang_codes
     else:
-        # Auto mode: download all available native + auto-translated
+        # Unknown/GUI-missing language: pull everything yt-dlp can.
         opts["subtitleslangs"] = ["all"]
-        opts["writeautomaticsub"] = True
 
     if embed_subtitles:
         opts["embedsubtitles"] = True
@@ -164,9 +163,11 @@ def selected_video_height(info: FormatDict | None) -> int | None:
         return None
     formats = info.get("requested_formats") or [info]
     heights: list[int] = [
-        h for f in formats
+        h
+        for f in formats
         if isinstance(f, dict) and f.get("vcodec") not in (None, "none")
-        for h in (f.get("height"),) if isinstance(h, int)
+        for h in (f.get("height"),)
+        if isinstance(h, int)
     ]
     return max(heights) if heights else None
 
@@ -181,6 +182,8 @@ def describe_selected_formats(info: FormatDict | None) -> str | None:
 
     requested_formats = info.get("requested_formats")
     if requested_formats:
-        return "实际下载格式: " + " + ".join(describe_format(f) for f in requested_formats if isinstance(f, dict))
+        return "实际下载格式: " + " + ".join(
+            describe_format(f) for f in requested_formats if isinstance(f, dict)
+        )
 
     return "实际下载格式: " + describe_format(info)

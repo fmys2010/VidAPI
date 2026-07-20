@@ -67,7 +67,9 @@ class Database:
             await self._conn.commit()
         if "embed_subtitles" not in columns:
             logger.info("Adding missing 'embed_subtitles' column to tasks table")
-            await self._conn.execute("ALTER TABLE tasks ADD COLUMN embed_subtitles INTEGER DEFAULT 1")
+            await self._conn.execute(
+                "ALTER TABLE tasks ADD COLUMN embed_subtitles INTEGER DEFAULT 1"
+            )
             await self._conn.commit()
 
     async def close(self) -> None:
@@ -133,9 +135,7 @@ class Database:
         if not self._conn:
             raise RuntimeError("Database not initialized")
 
-        cursor = await self._conn.execute(
-            "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
-        )
+        cursor = await self._conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
         row = await cursor.fetchone()
         if row:
             return self._row_to_task(row)
@@ -285,14 +285,14 @@ class Database:
     @staticmethod
     def _row_to_task(row: aiosqlite.Row) -> dict[str, Any]:
         """Convert database row to task dict."""
-        import json
         task = dict(row)
         try:
             task["urls"] = json.loads(task["urls"]) if task["urls"] else []
         except json.JSONDecodeError:
-            logger.warning("Corrupt JSON in urls column for task %s, returning empty list", task.get("task_id"))
+            logger.warning(
+                "Corrupt JSON in urls column for task %s, returning empty list", task.get("task_id")
+            )
             task["urls"] = []
-        # Convert embed_subtitles from int to bool (SQLite stores booleans as 0/1)
         if "embed_subtitles" in task:
             task["embed_subtitles"] = bool(task["embed_subtitles"])
         return task

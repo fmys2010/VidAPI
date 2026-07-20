@@ -210,6 +210,16 @@ CREATE TABLE IF NOT EXISTS config (
 - Cancellation: `session._cancel_requested = True` + `executor.shutdown(wait=False)` on hard cancel
 - TaskManager guards in-memory state with `threading.Lock`
 - SQLite persistence on every state change (WAL mode for concurrency)
+- `error_msg` column bounded to 500 chars at write time (TaskManager._safe_state_change / _safe_complete); yt-dlp exception strings can exceed this, the tail is dropped on truncation.
+
+### Cancellation / Deletion Race Guards
+
+Two short-lived in-memory guard sets prevent terminal-time races:
+
+- `_cancelled_tasks: set[str]` — populated by `cancel_task()`; consumed in `complete_task()` so that a late "completed" UPSERT cannot overwrite the "cancelled" state. Entry is discarded once `complete_task()` observes it (the task has already left `_running_tasks` and `_download_sessions`, so no second `complete_task` can arrive).
+- `_deleted_tasks: set[str]` — populated by `delete_task()`; consumed by `update_progress()` so an in-flight executor progress callback queued via `call_soon_threadsafe` cannot resurrect the deleted row as `downloading`/`pending`. Entry is discarded by `delete_task()` after the running task has been awaited and the DB row removed.
+
+Both guards are intentional invariants; the task has already been popped from `_running_tasks` / `_download_sessions` by the time the guards fire, so the discard cannot race with a second completion.
 
 ---
 
