@@ -30,18 +30,15 @@ QUALITY_OPTIONS = [
 ]
 
 # Subtitle options
-SUBTITLE_LANG_ZH = "zh"  # Chinese (native)
-SUBTITLE_LANG_EN = "en"  # English (native)
-SUBTITLE_LANG_ZH_HANS = "zh-Hans"  # Chinese Simplified
-SUBTITLE_LANG_ZH_HANT = "zh-Hant"  # Chinese Traditional
+SUBTITLE_LANG_ZH = "zh-Hans"  # Chinese Simplified (covers zh-Hans + bare zh via prefix match)
+SUBTITLE_LANG_EN = "en"  # English (native + auto)
 
 # Map UI labels (Chinese) to yt-dlp language codes
-# "中英双语" = Chinese + English native subtitles (no auto-generated)
-# "中文" = Chinese native subtitles
-# "英文" = English native subtitles
+# "中文" = Chinese subtitles (zh-Hans prefix matches zh, zh-Hans, zh-Hant, zh-CN, ...)
+# "英文" = English subtitles (en prefix matches en, en-US, en-GB, ...)
+# ponytail: one language = one sidecar track = never a bilingual two-row embed.
 SUBTITLE_LANG_MAP = {
-    "中英双语": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH, SUBTITLE_LANG_EN],
-    "中文": [SUBTITLE_LANG_ZH_HANS, SUBTITLE_LANG_ZH],
+    "中文": [SUBTITLE_LANG_ZH],
     "英文": [SUBTITLE_LANG_EN],
 }
 
@@ -90,19 +87,11 @@ def build_subtitle_opts(subtitle_language: str, embed_subtitles: bool) -> dict[s
     """
     Build yt-dlp subtitle options.
 
-    yt-dlp subtitle pool (YoutubeDL._process_subtitles):
-      available = manual_subs + (automatic_subs if writeautomaticsub else [])
-    then subtitleslangs filters that pool. So if writeautomaticsub is False,
-    YouTube auto-translated tracks are NEVER in the pool — a request for
-    "zh-Hans" on an English-native video yields no file even though YouTube
-    can auto-translate. That was the user-reported "no subtitles downloaded"
-    bug: the prior code hardcoded writeautomaticsub=False for every real
-    SubtitleLanguage value.
-
-    Fix: always enable writeautomaticsub. yt-dlp writes manual + auto as
-    separate sidecars when both exist for the same lang; players pick one
-    track, so the duplicate-track concern is a ux preference, not a defect,
-    and beats silently dropping the user's chosen language.
+    writeautomaticsub=True is mandatory: without it, YouTube auto-translated
+    tracks are absent from yt-dlp's subtitle pool, so a request for "中文" on an
+    English-native video yields no sidecar even though YouTube can auto-translate.
+    yt-dlp writes manual + auto as separate sidecars for the same lang when both
+    exist; players pick one track.
     """
     lang_codes = SUBTITLE_LANG_MAP.get(subtitle_language, [])
 

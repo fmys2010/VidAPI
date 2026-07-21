@@ -32,7 +32,6 @@ class Quality(str, Enum):
 
 
 class SubtitleLanguage(str, Enum):
-    ZH_EN = "中英双语"
     ZH = "中文"
     EN = "英文"
 
@@ -51,7 +50,7 @@ class CreateTaskRequest(BaseModel):
     quality: Quality = Field(default=Quality.BEST, description="Video quality")
     proxy: Optional[str] = Field(default=None, description="Proxy URL (http/socks)")
     cookie_header: Optional[str] = Field(default=None, description="Raw Cookie header for BiliBili")
-    subtitle_language: SubtitleLanguage = Field(default=SubtitleLanguage.ZH_EN, description="Subtitle language preference")
+    subtitle_language: SubtitleLanguage = Field(default=SubtitleLanguage.ZH, description="Subtitle language preference")
     embed_subtitles: bool = Field(default=True, description="Embed subtitles into video file")
 
     @field_validator("urls")
@@ -74,7 +73,7 @@ class TaskResponse(BaseModel):
     download_dir: Optional[str] = None
     download_mode: DownloadMode
     quality: Quality
-    subtitle_language: SubtitleLanguage = SubtitleLanguage.ZH_EN
+    subtitle_language: SubtitleLanguage = SubtitleLanguage.ZH
     embed_subtitles: bool = True
 
     model_config = {"from_attributes": True}

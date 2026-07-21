@@ -163,7 +163,7 @@ class DownloadSession:
         progress_callback: ProgressCallback,
         log_callback: LogCallback,
         cookie_header: str | None = None,
-        subtitle_language: str = "中英双语",
+        subtitle_language: str = "中文",
         embed_subtitles: bool = True,
     ):
         self.urls = urls
@@ -286,7 +286,8 @@ class DownloadSession:
                     Path(target_dir_str) / "%(title).200B [%(id)s] [%(format_id)s].%(ext)s"
                 ),
                 "continuedl": True,
-                "retries": 10,
+                "retries": 20,
+                "file_access_retries": 10,
                 "windowsfilenames": True,
                 "noprogress": True,
                 "quiet": True,
@@ -306,6 +307,12 @@ class DownloadSession:
                 "timeout": 30,
                 # Limit concurrent fragment downloads for HLS/DASH
                 "concurrent_fragment_downloads": 4,
+                # ponytail: sleep between extractions to dampen 429 rate-limit
+                # sprees. With ignoreerrors=True the whole task doesn't die on
+                # 429, but the user also loses the subtitle file unless yt-dlp
+                # can re-request after YouTube's quota resets. A short interval
+                # up-front is cheaper than retrying after the throttle kicks in.
+                "sleep_interval_requests": 2,
             }
 
             # Auto-locate Deno so yt-dlp-ejs can solve YouTube nsig challenges
@@ -327,14 +334,20 @@ class DownloadSession:
                 except Exception:
                     pass  # curl_cffi not installed or impersonation failed
 
-            # ponytail: subtitle-specific retries for HTTP 429 (rate limiting)
-            # yt-dlp uses 'retries' for video/audio fragments, but subtitles
-            # have a separate 'subtitlesretries' parameter. Set higher to
-            # handle YouTube subtitle rate limits without failing the whole task.
-            ydl_opts["subtitlesretries"] = 10
-
-            # YouTube: sleep between subtitle requests to avoid 429 rate limits
-            ydl_opts["sleep_subtitles"] = 5
+            # ponytail: subtitle 429 handling. yt-dlp has no "subtitlesretries"
+            # option — that key is a community myth (verified absent from
+            # YoutubeDL.__init__ and the kwargs docstring). The subtitle fetch
+            # in _write_subtitles goes through self.dl(), which is gated by the
+            # global "retries" option for known-error retries. So:
+            #   - retries=20 (set above) is what actually covers subtitle 429s.
+            #   - sleep_interval_subtitles paces each subtitle DOWNLOAD so yt-dlp
+            #     waits before issuing the subtitle HTTP request — this is the
+            #     real option name (sleep_subtitles does NOT exist; verified).
+            # Together with ignoreerrors=True this means: rate-limited subtitle
+            # fetches back off 5s and retry up to 20 times; if all 20 attempts
+            # 429, the task still succeeds (video+audio already landed) and a
+            # warning is logged — the user doesn't lose their downloaded file.
+            ydl_opts["sleep_interval_subtitles"] = 5
 
             if (
                 self.download_mode != DOWNLOAD_MODE_AUDIO_ONLY

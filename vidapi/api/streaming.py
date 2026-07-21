@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from vidapi.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/tasks", tags=["streaming"])
@@ -13,6 +16,7 @@ router = APIRouter(prefix="/tasks", tags=["streaming"])
 
 def get_task_manager() -> TaskManager:
     from vidapi.main import get_task_manager as _get_task_manager
+
     return _get_task_manager()
 
 
@@ -35,28 +39,26 @@ async def stream_task_progress(
     async def event_generator():
         queue, sub_id = task_manager.subscribe(task_id)
         try:
-            # Send initial state
-            yield make_sse_event("state_change", {
-                "task_id": task_id,
-                "state": task["state"],
-                "progress": task["progress_pct"],
-            })
+            yield make_sse_event(
+                "state_change",
+                {
+                    "task_id": task_id,
+                    "state": task["state"],
+                    "progress": task["progress_pct"],
+                },
+            )
 
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    # event is a dict from task_manager; serialize to SSE format
-                    if isinstance(event, dict):
-                        yield make_sse_event(event.get("event", "progress"), event.get("data", {}))
-                    else:
-                        yield event
+                    yield make_sse_event(event.get("event", "progress"), event.get("data", {}))
                 except asyncio.TimeoutError:
-                    # Send heartbeat
                     yield ": heartbeat\n\n"
-                except Exception:
-                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("SSE generator for %s stopping", task_id, exc_info=True)
         finally:
-            # unsubscribe this client
             task_manager.unsubscribe(task_id, sub_id)
 
     return StreamingResponse(

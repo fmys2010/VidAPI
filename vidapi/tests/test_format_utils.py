@@ -207,16 +207,27 @@ class TestBuildSubtitleOptsRegression:
             f"to the ['all'] branch and drop subtitles"
         )
 
-    def test_zh_en_requests_auto_translated_zh_for_en_native_video(self):
-        """The reported bug. For "中英双语" the opts must enable automatic
-        subtitle download so an English-native YouTube video still yields a
-        Chinese subtitle sidecar (auto-translated by YouTube), not only the
-        English native one. Without writeautomaticsub=True, yt-dlp finds no
-        zh-Hans native sub and writes nothing for that language."""
-        opts = build_subtitle_opts(SubtitleLanguage.ZH_EN.value, embed_subtitles=False)
+    def test_zh_requests_auto_translated_zh_for_en_native_video(self):
+        """For "中文" the opts must enable automatic subtitle download so an
+        English-native YouTube video still yields a Chinese subtitle sidecar
+        (auto-translated by YouTube), not nothing. Without writeautomaticsub=True,
+        yt-dlp finds no zh-Hans native sub and writes nothing for that language."""
+        opts = build_subtitle_opts(SubtitleLanguage.ZH.value, embed_subtitles=False)
         assert opts.get("writeautomaticsub") is True, opts
         assert "zh-Hans" in opts.get("subtitleslangs", [])
-        assert "en" in opts.get("subtitleslangs", [])
+
+    def test_zh_does_not_request_english_and_vice_versa(self):
+        """User-reported concern: 'when picking non-bilingual options, yt-dlp
+        still downloads both Chinese and English subtitles.' Locking this: the
+        only way to get a bilingual two-row embed is to request two language
+        codes. A single-language choice produces a single sidecar — yt-dlp's
+        subtitleslangs filter (YoutubeDL.process_subtitles) intersects its pool
+        against exactly these codes. If a future refactor adds a 'helpful'
+        fallback to the other language, this test fails first."""
+        zh_opts = build_subtitle_opts(SubtitleLanguage.ZH.value, embed_subtitles=False)
+        en_opts = build_subtitle_opts(SubtitleLanguage.EN.value, embed_subtitles=False)
+        assert zh_opts["subtitleslangs"] == ["zh-Hans"], zh_opts
+        assert en_opts["subtitleslangs"] == ["en"], en_opts
 
     @pytest.mark.parametrize("lang_enum", list(SubtitleLanguage))
     def test_no_ghost_string_default_leaks_in(self, lang_enum: SubtitleLanguage):
@@ -229,3 +240,17 @@ class TestBuildSubtitleOptsRegression:
         assert opts.get("subtitleslangs") != ["all"], (lang_enum, opts)
         assert "自动（视频默认语言）" not in opts.values()
         assert "中英双语（优先原生字幕）" not in opts.values()
+
+    @pytest.mark.parametrize("lang_enum", list(SubtitleLanguage))
+    def test_single_language_per_choice_no_bilingual_embed(self, lang_enum: SubtitleLanguage):
+        """No enum value may request more than one language code. yt-dlp writes
+        one sidecar per requested language and the player can mux them into a
+        two-row bilingual display — the user-reported 'embedded subtitles show
+        two lines' symptom. Restricting every choice to a single language code
+        is the structural fix: there is no way to ask for two."""
+        opts = build_subtitle_opts(lang_enum.value, embed_subtitles=False)
+        langs = opts.get("subtitleslangs")
+        assert langs and len(langs) == 1, (
+            f"{lang_enum.name}: subtitleslangs={langs!r} — must be exactly one "
+            f"language code to avoid yt-dlp embedding bilingual tracks"
+        )
